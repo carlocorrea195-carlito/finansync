@@ -28,12 +28,52 @@
             { id: 'COM-20261101-0001', type: 'gasto', entity: 'Soluciones Velcal', amount: 5600, currency: 'S/.', category: 'Planilla / Sueldos', costCenter: 'Personal & Planilla', date: '2026-11-01', note: 'Quincena conductores de ruta', hasSustento: true, sustentoFile: 'Planilla_Quincena_Nov.pdf', fechaCreacion: '2026-11-01T08:00:00', ultimaModificacion: null, modificado: 'No', origen: 'App', estado: 'Activo', pendingSync: false }
         ];
 
-        const DEFAULT_CATEGORIES = {
-            ingreso: ['Ventas / Servicios', 'Honorarios Profesional', 'Inversiones', 'Renta de Alquileres', 'Otros Ingresos'],
-            gasto: ['Planilla / Sueldos', 'Proveedores & Insumos', 'Impuestos (SUNAT)', 'Servicios Básicos', 'Alquileres', 'Marketing & Publicidad', 'Mantenimiento', 'Otros Gastos']
+        // Listas maestras por empresa
+        const DEFAULT_CATEGORIES_BY_ENTITY = {
+            'Personal': {
+                ingreso: ['Salario', 'Honorarios', 'Inversiones', 'Alquiler', 'Otros Ingresos'],
+                gasto: ['Alimentación', 'Transporte', 'Vivienda', 'Servicios', 'Salud', 'Educación', 'Ocio', 'Otros Gastos']
+            },
+            'Soluciones Velcal': {
+                ingreso: ['Ventas / Servicios', 'Honorarios Profesional', 'Inversiones', 'Renta de Alquileres', 'Otros Ingresos'],
+                gasto: ['Planilla / Sueldos', 'Proveedores & Insumos', 'Impuestos (SUNAT)', 'Servicios Básicos', 'Alquileres', 'Marketing & Publicidad', 'Mantenimiento', 'Otros Gastos']
+            },
+            'Transportes Logística S.A.C.': {
+                ingreso: ['Ventas / Servicios', 'Honorarios Profesional', 'Inversiones', 'Renta de Alquileres', 'Otros Ingresos'],
+                gasto: ['Planilla / Sueldos', 'Proveedores & Insumos', 'Impuestos (SUNAT)', 'Servicios Básicos', 'Alquileres', 'Marketing & Publicidad', 'Mantenimiento', 'Otros Gastos']
+            }
         };
 
-        const DEFAULT_COST_CENTERS = ['Operaciones & Logística', 'Mantenimiento & Flota', 'Personal & Planilla', 'Administración General'];
+        const DEFAULT_COST_CENTERS_BY_ENTITY = {
+            'Personal': ['Hogar', 'Personal', 'Familia', 'Ahorro', 'Ocio'],
+            'Soluciones Velcal': ['Operaciones & Logística', 'Mantenimiento & Flota', 'Personal & Planilla', 'Administración General'],
+            'Transportes Logística S.A.C.': ['Operaciones & Logística', 'Mantenimiento & Flota', 'Personal & Planilla', 'Administración General']
+        };
+
+        // Migración: convertir listas globales viejas a por-empresa
+        const migrateCategories = (stored, entities) => {
+            if (!stored) return DEFAULT_CATEGORIES_BY_ENTITY;
+            // Si es el formato viejo {ingreso:[], gasto:[]}
+            if (Array.isArray(stored.ingreso)) {
+                const migrated = {};
+                entities.forEach(e => {
+                    migrated[e.name] = { ingreso: [...stored.ingreso], gasto: [...stored.gasto] };
+                });
+                return migrated;
+            }
+            // Ya es formato nuevo
+            return stored;
+        };
+
+        const migrateCostCenters = (stored, entities) => {
+            if (!stored) return DEFAULT_COST_CENTERS_BY_ENTITY;
+            if (Array.isArray(stored)) {
+                const migrated = {};
+                entities.forEach(e => { migrated[e.name] = [...stored]; });
+                return migrated;
+            }
+            return stored;
+        };
 
         const loadLS = (key, fallback) => {
             try {
@@ -58,7 +98,6 @@
 
         function App() {
             const [tab, setTab] = React.useState('resumen');
-            const [activeEntity, setActiveEntity] = React.useState('Todas');
             const [showModal, setShowModal] = React.useState(false);
             const [selectedYear, setSelectedYear] = React.useState('2026');
 
@@ -67,16 +106,28 @@
             const [showAnulados, setShowAnulados] = React.useState(false);
 
             const [entities, setEntities] = React.useState(() => loadLS('finansync_entities', DEFAULT_ENTITIES));
+            // activeEntity: por defecto la primera empresa
+            const [activeEntity, setActiveEntity] = React.useState(() => {
+                const ents = loadLS('finansync_entities', DEFAULT_ENTITIES);
+                return ents[0]?.name || 'Personal';
+            });
+
             const [transactions, setTransactions] = React.useState(() => loadLS('finansync_transactions', DEFAULT_TRANSACTIONS));
-            const [categories, setCategories] = React.useState(() => loadLS('finansync_categories', DEFAULT_CATEGORIES));
-            const [costCenters, setCostCenters] = React.useState(() => loadLS('finansync_costcenters', DEFAULT_COST_CENTERS));
+            const [categoriesByEntity, setCategoriesByEntity] = React.useState(() => {
+                const ents = loadLS('finansync_entities', DEFAULT_ENTITIES);
+                return migrateCategories(loadLS('finansync_categories_by_entity', null), ents);
+            });
+            const [costCentersByEntity, setCostCentersByEntity] = React.useState(() => {
+                const ents = loadLS('finansync_entities', DEFAULT_ENTITIES);
+                return migrateCostCenters(loadLS('finansync_costcenters_by_entity', null), ents);
+            });
             const [appsScriptUrl, setAppsScriptUrl] = React.useState(() => loadLS('finansync_script_url', ''));
             const [lastSyncTime, setLastSyncTime] = React.useState(() => loadLS('finansync_last_sync', null));
 
             React.useEffect(() => saveLS('finansync_entities', entities), [entities]);
             React.useEffect(() => saveLS('finansync_transactions', transactions), [transactions]);
-            React.useEffect(() => saveLS('finansync_categories', categories), [categories]);
-            React.useEffect(() => saveLS('finansync_costcenters', costCenters), [costCenters]);
+            React.useEffect(() => saveLS('finansync_categories_by_entity', categoriesByEntity), [categoriesByEntity]);
+            React.useEffect(() => saveLS('finansync_costcenters_by_entity', costCentersByEntity), [costCentersByEntity]);
             React.useEffect(() => saveLS('finansync_script_url', appsScriptUrl), [appsScriptUrl]);
             React.useEffect(() => saveLS('finansync_last_sync', lastSyncTime), [lastSyncTime]);
 
@@ -91,11 +142,14 @@
 
             const [editingId, setEditingId] = React.useState(null);
             const [formType, setFormType] = React.useState('gasto');
-            const [formEntity, setFormEntity] = React.useState('Soluciones Velcal');
+            const [formEntity, setFormEntity] = React.useState(() => {
+                const ents = loadLS('finansync_entities', DEFAULT_ENTITIES);
+                return ents[0]?.name || 'Personal';
+            });
             const [formAmount, setFormAmount] = React.useState('');
             const [formCurrency, setFormCurrency] = React.useState('S/.');
-            const [formCategory, setFormCategory] = React.useState('Proveedores & Insumos');
-            const [formCostCenter, setFormCostCenter] = React.useState('Operaciones & Logística');
+            const [formCategory, setFormCategory] = React.useState('');
+            const [formCostCenter, setFormCostCenter] = React.useState('');
             const [formDate, setFormDate] = React.useState(new Date().toISOString().split('T')[0]);
             const [formNote, setFormNote] = React.useState('');
             const [formHasSustento, setFormHasSustento] = React.useState(false);
@@ -105,8 +159,24 @@
             const [newCatGasto, setNewCatGasto] = React.useState('');
             const [newCostCenter, setNewCostCenter] = React.useState('');
 
-            // Contador de cambios pendientes de sincronizar
+            // Categorías y centros de la empresa activa
+            const activeCategories = categoriesByEntity[activeEntity] || { ingreso: [], gasto: [] };
+            const activeCostCenters = costCentersByEntity[activeEntity] || [];
+
             const pendingCount = transactions.filter(t => t.pendingSync).length;
+
+            // Asegurar que formCategory/formCostCenter sean válidos para formEntity
+            React.useEffect(() => {
+                const cats = categoriesByEntity[formEntity] || { ingreso: [], gasto: [] };
+                const list = formType === 'ingreso' ? cats.ingreso : cats.gasto;
+                if (list.length > 0 && !list.includes(formCategory)) {
+                    setFormCategory(list[0]);
+                }
+                const ccs = costCentersByEntity[formEntity] || [];
+                if (ccs.length > 0 && !ccs.includes(formCostCenter)) {
+                    setFormCostCenter(ccs[0]);
+                }
+            }, [formEntity, formType, categoriesByEntity, costCentersByEntity]);
 
             // ===== Sincronización =====
             const handleSyncData = async (isAuto = false) => {
@@ -140,7 +210,6 @@
                         });
                         const data = await response.json();
                         if (data.success && Array.isArray(data.transactions)) {
-                            // ✅ Al sincronizar, limpiamos el flag pendingSync
                             const cleanTx = data.transactions.map(t => ({ ...t, pendingSync: false }));
                             setTransactions(prev => [...prev.filter(t => t.entity !== ent.name), ...cleanTx]);
                             setSyncResults(prev => prev.map(r => r.entity === ent.name ? { entity: ent.name, status: 'ok', count: data.transactions.length } : r));
@@ -168,6 +237,13 @@
                 setFormNote('');
                 setFormHasSustento(false);
                 setFormFileName('');
+                setFormEntity(activeEntity);
+                // Inicializar categoría y centro de la empresa activa
+                const cats = categoriesByEntity[activeEntity] || { ingreso: [], gasto: [] };
+                const list = type === 'ingreso' ? cats.ingreso : cats.gasto;
+                setFormCategory(list[0] || '');
+                const ccs = costCentersByEntity[activeEntity] || [];
+                setFormCostCenter(ccs[0] || '');
                 setShowModal(true);
             };
 
@@ -210,54 +286,68 @@
                 setShowModal(false);
             };
 
-            // ✅ NUEVO: Anular transacción (no borra, cambia estado)
             const anularTransaction = (t) => {
                 if (t.estado === 'Anulado') return;
                 const ok = window.confirm(`¿Anular esta transacción?\n\n"${t.note}" — ${t.currency} ${t.amount.toFixed(2)}\n\nNo se borrará: quedará marcada como "Anulado" y no contará en los totales.`);
                 if (!ok) return;
                 setTransactions(transactions.map(tx => tx.id === t.id ? {
-                    ...tx,
-                    estado: 'Anulado',
-                    ultimaModificacion: new Date().toISOString(),
-                    modificado: 'Sí',
-                    origen: 'App',
-                    pendingSync: true
+                    ...tx, estado: 'Anulado', ultimaModificacion: new Date().toISOString(), modificado: 'Sí', origen: 'App', pendingSync: true
                 } : tx));
             };
 
-            // ✅ NUEVO: Reactivar transacción anulada
             const reactivarTransaction = (t) => {
                 if (t.estado !== 'Anulado') return;
                 const ok = window.confirm(`¿Reactivar esta transacción?\n\n"${t.note}" — ${t.currency} ${t.amount.toFixed(2)}`);
                 if (!ok) return;
                 setTransactions(transactions.map(tx => tx.id === t.id ? {
-                    ...tx,
-                    estado: 'Activo',
-                    ultimaModificacion: new Date().toISOString(),
-                    modificado: 'Sí',
-                    origen: 'App',
-                    pendingSync: true
+                    ...tx, estado: 'Activo', ultimaModificacion: new Date().toISOString(), modificado: 'Sí', origen: 'App', pendingSync: true
                 } : tx));
             };
 
+            // ===== Listas maestras por empresa (operan sobre activeEntity) =====
             const addCategory = (type) => {
                 const val = type === 'ingreso' ? newCatIngreso : newCatGasto;
                 if (!val.trim()) return;
-                setCategories({ ...categories, [type]: [...categories[type], val.trim()] });
+                const current = categoriesByEntity[activeEntity] || { ingreso: [], gasto: [] };
+                setCategoriesByEntity({
+                    ...categoriesByEntity,
+                    [activeEntity]: {
+                        ...current,
+                        [type]: [...current[type], val.trim()]
+                    }
+                });
                 if (type === 'ingreso') setNewCatIngreso(''); else setNewCatGasto('');
             };
+
             const removeCategory = (type, cat) => {
-                if (categories[type].length <= 1) return;
-                setCategories({ ...categories, [type]: categories[type].filter(c => c !== cat) });
+                const current = categoriesByEntity[activeEntity] || { ingreso: [], gasto: [] };
+                if (current[type].length <= 1) return;
+                setCategoriesByEntity({
+                    ...categoriesByEntity,
+                    [activeEntity]: {
+                        ...current,
+                        [type]: current[type].filter(c => c !== cat)
+                    }
+                });
             };
+
             const addCostCenter = () => {
                 if (!newCostCenter.trim()) return;
-                setCostCenters([...costCenters, newCostCenter.trim()]);
+                const current = costCentersByEntity[activeEntity] || [];
+                setCostCentersByEntity({
+                    ...costCentersByEntity,
+                    [activeEntity]: [...current, newCostCenter.trim()]
+                });
                 setNewCostCenter('');
             };
+
             const removeCostCenter = (cc) => {
-                if (costCenters.length <= 1) return;
-                setCostCenters(costCenters.filter(c => c !== cc));
+                const current = costCentersByEntity[activeEntity] || [];
+                if (current.length <= 1) return;
+                setCostCentersByEntity({
+                    ...costCentersByEntity,
+                    [activeEntity]: current.filter(c => c !== cc)
+                });
             };
 
             const updateEntityFolder = (id, url) => {
@@ -276,18 +366,31 @@
                 if (entities.find(e => e.id !== id && e.code === cleaned)) return;
                 setEntities(entities.map(e => e.id === id ? { ...e, code: cleaned } : e));
             };
+
             const deleteEntity = (id) => {
                 const ent = entities.find(e => e.id === id);
                 if (!ent) return;
                 const txCount = transactions.filter(t => t.entity === ent.name).length;
                 const confirmMsg = txCount > 0
-                    ? `⚠️ ¿Eliminar "${ent.name}" (código ${ent.code})?\n\nTambién se eliminarán ${txCount} transacción(es) de esta empresa en la app.\n\nLos archivos en Drive NO se borrarán, solo dejarán de sincronizarse.\n\n¿Continuar?`
+                    ? `⚠️ ¿Eliminar "${ent.name}" (código ${ent.code})?\n\nTambién se eliminarán ${txCount} transacción(es) y sus listas maestras.\n\nLos archivos en Drive NO se borrarán.\n\n¿Continuar?`
                     : `¿Eliminar la empresa "${ent.name}" (código ${ent.code})?\n\nLos archivos en Drive NO se borrarán.`;
                 if (!window.confirm(confirmMsg)) return;
-                setEntities(entities.filter(e => e.id !== id));
+                const newEntities = entities.filter(e => e.id !== id);
+                setEntities(newEntities);
                 setTransactions(transactions.filter(t => t.entity !== ent.name));
-                if (activeEntity === ent.name) setActiveEntity('Todas');
+                // Eliminar categorías y centros de esa empresa
+                const newCats = { ...categoriesByEntity };
+                delete newCats[ent.name];
+                setCategoriesByEntity(newCats);
+                const newCCs = { ...costCentersByEntity };
+                delete newCCs[ent.name];
+                setCostCentersByEntity(newCCs);
+                // Si la empresa activa era la eliminada, cambiar a la primera
+                if (activeEntity === ent.name) {
+                    setActiveEntity(newEntities[0]?.name || '');
+                }
             };
+
             const openEntityModal = (entityToEdit = null) => {
                 if (entityToEdit) {
                     setEditingEntityId(entityToEdit.id);
@@ -299,6 +402,7 @@
                 setEntityFormError('');
                 setShowEntityModal(true);
             };
+
             const saveNewEntity = (e) => {
                 e.preventDefault();
                 const trimmedName = entityForm.name.trim();
@@ -309,30 +413,51 @@
                 if (!validateCompanyCode(trimmedCode)) return setEntityFormError('El código debe ser exactamente 2 letras mayúsculas (A–Z).');
                 if (entities.some(en => en.code === trimmedCode && en.id !== editingEntityId)) return setEntityFormError(`El código "${trimmedCode}" ya está en uso por otra empresa.`);
                 if (entities.some(en => en.name.toLowerCase() === trimmedName.toLowerCase() && en.id !== editingEntityId)) return setEntityFormError('Ya existe una empresa con ese nombre.');
+
                 if (editingEntityId) {
                     const oldEntity = entities.find(en => en.id === editingEntityId);
                     const oldName = oldEntity ? oldEntity.name : '';
                     setEntities(entities.map(en => en.id === editingEntityId ? { ...en, name: trimmedName, code: trimmedCode, ruc: trimmedRuc, reason: trimmedReason, driveFolderUrl: entityForm.driveFolderUrl.trim(), syncEnabled: entityForm.syncEnabled } : en));
                     if (oldName && oldName !== trimmedName) {
                         setTransactions(transactions.map(t => t.entity === oldName ? { ...t, entity: trimmedName, pendingSync: true } : t));
+                        // Migrar listas maestras al nuevo nombre
+                        setCategoriesByEntity(prev => {
+                            const next = { ...prev };
+                            if (next[oldName]) { next[trimmedName] = next[oldName]; delete next[oldName]; }
+                            return next;
+                        });
+                        setCostCentersByEntity(prev => {
+                            const next = { ...prev };
+                            if (next[oldName]) { next[trimmedName] = next[oldName]; delete next[oldName]; }
+                            return next;
+                        });
                         if (activeEntity === oldName) setActiveEntity(trimmedName);
                     }
                 } else {
                     const newId = Math.max(0, ...entities.map(en => en.id)) + 1;
                     setEntities([...entities, { id: newId, name: trimmedName, code: trimmedCode, ruc: trimmedRuc, reason: trimmedReason, driveFolderUrl: entityForm.driveFolderUrl.trim(), syncEnabled: entityForm.syncEnabled }]);
+                    // Inicializar listas maestras con defaults para la nueva empresa
+                    setCategoriesByEntity(prev => ({
+                        ...prev,
+                        [trimmedName]: { ingreso: ['Ventas / Servicios', 'Otros Ingresos'], gasto: ['Proveedores & Insumos', 'Otros Gastos'] }
+                    }));
+                    setCostCentersByEntity(prev => ({
+                        ...prev,
+                        [trimmedName]: ['General']
+                    }));
                 }
                 setShowEntityModal(false);
             };
 
-            // ✅ NUEVO: Exportar/Importar JSON
+            // ===== Export/Import =====
             const handleExportJSON = () => {
                 const data = {
                     exportedAt: new Date().toISOString(),
                     appVersion: 'FinanSync Pro',
                     entities,
                     transactions,
-                    categories,
-                    costCenters
+                    categoriesByEntity,
+                    costCentersByEntity
                 };
                 const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
                 const url = URL.createObjectURL(blob);
@@ -357,16 +482,13 @@
                             return;
                         }
                         const replace = window.confirm(
-                            `¿Importar el backup?\n\n` +
-                            `• ${data.transactions.length} transacciones\n` +
-                            `• ${(data.entities || []).length} empresas\n\n` +
-                            `Se REEMPLAZARÁN los datos actuales. ¿Continuar?`
+                            `¿Importar el backup?\n\n• ${data.transactions.length} transacciones\n• ${(data.entities || []).length} empresas\n\nSe REEMPLAZARÁN los datos actuales. ¿Continuar?`
                         );
                         if (!replace) return;
                         if (data.entities) setEntities(data.entities);
                         if (data.transactions) setTransactions(data.transactions.map(t => ({ ...t, pendingSync: false })));
-                        if (data.categories) setCategories(data.categories);
-                        if (data.costCenters) setCostCenters(data.costCenters);
+                        if (data.categoriesByEntity) setCategoriesByEntity(data.categoriesByEntity);
+                        if (data.costCentersByEntity) setCostCentersByEntity(data.costCentersByEntity);
                         alert('✅ Backup importado correctamente.');
                     } catch (err) {
                         alert('❌ Error al leer el archivo: ' + err.message);
@@ -375,8 +497,9 @@
                 reader.readAsText(file);
             };
 
+            // ===== Filtrado (solo la empresa activa) =====
             const filteredTx = transactions.filter(t => {
-                const matchEntity = activeEntity === 'Todas' || t.entity === activeEntity;
+                const matchEntity = t.entity === activeEntity;
                 const matchType = filterType === 'Todos' || (filterType === 'Ingresos' && t.type === 'ingreso') || (filterType === 'Gastos' && t.type === 'gasto');
                 const matchCat = filterCategory === 'Todas' || t.category === filterCategory;
                 const matchAnulado = showAnulados || t.estado !== 'Anulado';
@@ -384,7 +507,7 @@
             });
 
             const entityFilteredTx = transactions.filter(t =>
-                t.estado === 'Activo' && (activeEntity === 'Todas' || t.entity === activeEntity)
+                t.estado === 'Activo' && t.entity === activeEntity
             );
 
             const totalIngresos = entityFilteredTx.filter(t => t.type === 'ingreso').reduce((s, t) => s + t.amount, 0);
@@ -426,7 +549,6 @@
                             </div>
                         </div>
                         <div className="flex items-center gap-2 overflow-x-auto w-full md:w-auto pb-2 md:pb-0">
-                            <button onClick={() => setActiveEntity('Todas')} className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${activeEntity === 'Todas' ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-300'}`}>Todas</button>
                             {entities.map(ent => (
                                 <button key={ent.id} onClick={() => setActiveEntity(ent.name)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition ${activeEntity === ent.name ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-300'}`}>
                                     {ent.name}
@@ -503,8 +625,8 @@
                         {tab === 'indicadores' && (
                             <div className="space-y-6">
                                 <div>
-                                    <h2 className="text-xl font-bold">Indicadores Financieros (KPIs)</h2>
-                                    <p className="text-xs text-slate-400">Datos de {currentMonthName} {currentYear} para {activeEntity}</p>
+                                    <h2 className="text-xl font-bold">Indicadores Financieros (KPIs) — {activeEntity}</h2>
+                                    <p className="text-xs text-slate-400">Datos de {currentMonthName} {currentYear}</p>
                                 </div>
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                                     <div className="bg-slate-900 p-5 rounded-2xl border border-slate-800">
@@ -572,13 +694,16 @@
                             <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 space-y-6">
                                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-800 pb-4">
                                     <div>
-                                        <h2 className="text-xl font-bold">Estados Financieros (EEFF)</h2>
+                                        <h2 className="text-xl font-bold">Estados Financieros (EEFF) — {activeEntity}</h2>
                                         <p className="text-xs text-slate-400">Estado de Pérdidas y Ganancias (P&L)</p>
                                     </div>
                                     <div className="bg-slate-950 p-1 rounded-lg border border-slate-800 flex text-xs">
                                         <button onClick={() => setSelectedYear('2026')} className={`px-3 py-1 rounded-md font-bold ${selectedYear === '2026' ? 'bg-emerald-600 text-white' : 'text-slate-400'}`}>2026</button>
                                         <button onClick={() => setSelectedYear('2025')} className={`px-3 py-1 rounded-md font-bold ${selectedYear === '2025' ? 'bg-emerald-600 text-white' : 'text-slate-400'}`}>2025</button>
                                     </div>
+                                </div>
+                                <div className="bg-amber-950/30 border border-amber-800/50 p-3 rounded-xl">
+                                    <p className="text-xs text-amber-400">⚠️ Los datos del P&L son de ejemplo. Próximamente se conectarán a las transacciones reales de {activeEntity}.</p>
                                 </div>
                                 <div className="grid grid-cols-3 gap-4 bg-slate-950 p-4 rounded-xl border border-slate-800 text-center">
                                     <div><p className="text-slate-400 text-xs">Ventas Totales</p><p className="text-emerald-400 font-bold text-base mt-1">S/. 85,000.00</p></div>
@@ -607,7 +732,7 @@
                         {tab === 'historial' && (
                             <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 space-y-6">
                                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                                    <h2 className="text-xl font-bold">Historial de Transacciones</h2>
+                                    <h2 className="text-xl font-bold">Historial de Transacciones — {activeEntity}</h2>
                                     <button onClick={() => openRegisterModal('gasto')} className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-xl text-xs font-bold">+ Registrar Nuevo</button>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-950 p-4 rounded-xl border border-slate-800">
@@ -623,7 +748,7 @@
                                         <label className="text-xs text-slate-400 block mb-1">Filtrar por Categoría</label>
                                         <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)} className="w-full bg-slate-900 border border-slate-800 p-2 rounded-lg text-xs">
                                             <option value="Todas">Todas las Categorías</option>
-                                            {[...categories.ingreso, ...categories.gasto].map(c => <option key={c} value={c}>{c}</option>)}
+                                            {[...activeCategories.ingreso, ...activeCategories.gasto].map(c => <option key={c} value={c}>{c}</option>)}
                                         </select>
                                     </div>
                                     <div className="flex items-end">
@@ -644,7 +769,7 @@
                                                     {t.modificado === 'Sí' && !t.pendingSync && <span className="text-[10px] text-amber-400 bg-amber-950/40 px-1.5 py-0.5 rounded border border-amber-900/40">✏️ Editado ({t.origen})</span>}
                                                     {t.estado === 'Anulado' && <span className="text-[10px] text-rose-400 bg-rose-950/40 px-1.5 py-0.5 rounded border border-rose-900/40">Anulado</span>}
                                                 </div>
-                                                <p className="text-xs text-slate-400">{t.category} • {t.costCenter} • <span className="text-slate-300 font-medium">{t.entity}</span></p>
+                                                <p className="text-xs text-slate-400">{t.category} • {t.costCenter}</p>
                                                 {t.hasSustento && <span className="inline-flex items-center gap-1 text-[11px] text-blue-400 bg-blue-950/40 px-2 py-0.5 rounded border border-blue-900/40">📄 {t.sustentoFile}</span>}
                                             </div>
                                             <div className="flex items-center justify-between w-full md:w-auto md:justify-end gap-4 border-t md:border-t-0 border-slate-900 pt-2 md:pt-0">
@@ -729,10 +854,9 @@
                                     {lastSyncTime && <p className="text-[11px] text-slate-500 mt-2">Última sincronización: <span className="text-slate-300">{new Date(lastSyncTime).toLocaleString('es-PE')}</span></p>}
                                 </div>
 
-                                {/* ✅ NUEVO: Export/Import JSON */}
                                 <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800">
                                     <h2 className="text-xl font-bold mb-2">Respaldo y Restauración</h2>
-                                    <p className="text-xs text-slate-400 mb-4">Descarga un backup de todas tus transacciones y configuración en un archivo JSON. Útil para cambiar de dispositivo o como red de seguridad.</p>
+                                    <p className="text-xs text-slate-400 mb-4">Descarga un backup de todas tus transacciones y configuración en un archivo JSON.</p>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                         <button onClick={handleExportJSON} className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 px-4 rounded-xl text-xs transition flex items-center justify-center gap-2">
                                             ⬇️ Exportar backup JSON
@@ -742,16 +866,21 @@
                                             <input type="file" accept="application/json,.json" onChange={handleImportJSON} className="hidden" />
                                         </label>
                                     </div>
-                                    <p className="text-[10px] text-slate-500 mt-3">El backup incluye: {transactions.length} transacciones, {entities.length} empresas, {categories.ingreso.length + categories.gasto.length} categorías y {costCenters.length} centros de costo.</p>
+                                    <p className="text-[10px] text-slate-500 mt-3">El backup incluye: {transactions.length} transacciones, {entities.length} empresas.</p>
                                 </div>
 
+                                {/* Listas maestras POR EMPRESA */}
                                 <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800">
-                                    <h2 className="text-xl font-bold mb-4">Gestión de Listas Maestras</h2>
+                                    <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
+                                        <h2 className="text-xl font-bold">Listas Maestras — {activeEntity}</h2>
+                                        <span className="bg-slate-950 text-slate-300 text-[11px] px-2.5 py-1 rounded-lg border border-slate-800">Editando: {activeEntity}</span>
+                                    </div>
+                                    <p className="text-xs text-slate-400 mb-4">Estas listas son exclusivas de <strong className="text-emerald-400">{activeEntity}</strong>. Cambia de empresa en el header para editar las de otra.</p>
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                         <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
                                             <h3 className="font-semibold text-xs text-emerald-400 mb-3">Categorías de Ingresos</h3>
                                             <div className="space-y-2 mb-4 max-h-48 overflow-y-auto">
-                                                {categories.ingreso.map(c => (
+                                                {(activeCategories.ingreso || []).map(c => (
                                                     <div key={c} className="flex justify-between items-center bg-slate-900 px-2.5 py-1.5 rounded text-xs"><span>{c}</span><button onClick={() => removeCategory('ingreso', c)} className="text-rose-400 font-bold px-1.5 hover:text-rose-300">✕</button></div>
                                                 ))}
                                             </div>
@@ -763,7 +892,7 @@
                                         <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
                                             <h3 className="font-semibold text-xs text-rose-400 mb-3">Categorías de Gastos</h3>
                                             <div className="space-y-2 mb-4 max-h-48 overflow-y-auto">
-                                                {categories.gasto.map(c => (
+                                                {(activeCategories.gasto || []).map(c => (
                                                     <div key={c} className="flex justify-between items-center bg-slate-900 px-2.5 py-1.5 rounded text-xs"><span>{c}</span><button onClick={() => removeCategory('gasto', c)} className="text-rose-400 font-bold px-1.5 hover:text-rose-300">✕</button></div>
                                                 ))}
                                             </div>
@@ -775,7 +904,7 @@
                                         <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
                                             <h3 className="font-semibold text-xs text-blue-400 mb-3">Centros de Costo</h3>
                                             <div className="space-y-2 mb-4 max-h-48 overflow-y-auto">
-                                                {costCenters.map(cc => (
+                                                {(activeCostCenters || []).map(cc => (
                                                     <div key={cc} className="flex justify-between items-center bg-slate-900 px-2.5 py-1.5 rounded text-xs"><span>{cc}</span><button onClick={() => removeCostCenter(cc)} className="text-rose-400 font-bold px-1.5 hover:text-rose-300">✕</button></div>
                                                 ))}
                                             </div>
@@ -801,7 +930,15 @@
                                     <div className="grid grid-cols-2 gap-3">
                                         <div>
                                             <label className="text-slate-400 block mb-1">Empresa</label>
-                                            <select value={formEntity} onChange={e => setFormEntity(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-2 rounded-lg">
+                                            <select value={formEntity} onChange={e => {
+                                                const newEnt = e.target.value;
+                                                setFormEntity(newEnt);
+                                                const cats = categoriesByEntity[newEnt] || { ingreso: [], gasto: [] };
+                                                const list = formType === 'ingreso' ? cats.ingreso : cats.gasto;
+                                                setFormCategory(list[0] || '');
+                                                const ccs = costCentersByEntity[newEnt] || [];
+                                                setFormCostCenter(ccs[0] || '');
+                                            }} className="w-full bg-slate-950 border border-slate-800 p-2 rounded-lg">
                                                 {entities.map(e => <option key={e.id} value={e.name}>{e.name}</option>)}
                                             </select>
                                         </div>
@@ -814,13 +951,13 @@
                                         <div>
                                             <label className="text-slate-400 block mb-1">Categoría</label>
                                             <select value={formCategory} onChange={e => setFormCategory(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-2 rounded-lg">
-                                                {(categories[formType] || []).map(c => <option key={c} value={c}>{c}</option>)}
+                                                {((categoriesByEntity[formEntity] || { ingreso: [], gasto: [] })[formType] || []).map(c => <option key={c} value={c}>{c}</option>)}
                                             </select>
                                         </div>
                                         <div>
                                             <label className="text-slate-400 block mb-1">Centro de Costo</label>
                                             <select value={formCostCenter} onChange={e => setFormCostCenter(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-2 rounded-lg">
-                                                {costCenters.map(cc => <option key={cc} value={cc}>{cc}</option>)}
+                                                {(costCentersByEntity[formEntity] || []).map(cc => <option key={cc} value={cc}>{cc}</option>)}
                                             </select>
                                         </div>
                                     </div>
@@ -880,7 +1017,7 @@
                                         <label htmlFor="newSync" className="cursor-pointer">Activar sincronización con Drive</label>
                                     </div>
                                     {editingEntityId && entityForm.name.trim() !== entities.find(e => e.id === editingEntityId)?.name && (
-                                        <p className="text-[11px] text-amber-400 bg-amber-950/40 border border-amber-900/40 px-2 py-1 rounded">ℹ️ Al cambiar el nombre, las transacciones existentes se actualizarán automáticamente.</p>
+                                        <p className="text-[11px] text-amber-400 bg-amber-950/40 border border-amber-900/40 px-2 py-1 rounded">ℹ️ Al cambiar el nombre, las transacciones y listas maestras se migrarán al nuevo nombre.</p>
                                     )}
                                     {entityFormError && <p className="text-rose-400 bg-rose-950/40 border border-rose-900/40 px-2 py-1.5 rounded text-[11px]">⚠️ {entityFormError}</p>}
                                     <p className="text-[10px] text-slate-500">Archivos esperados en Drive: <code className="text-slate-300">registro_ventas_{entityForm.code || 'XX'}</code> y <code className="text-slate-300">registro_compras_{entityForm.code || 'XX'}</code></p>
