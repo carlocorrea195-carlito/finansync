@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FinanSync Pro - Edición Integral</title>
+    <link rel="manifest" href="./manifest.json">
+    <meta name="theme-color" content="#0f172a">
+    <link rel="apple-touch-icon" href="/icon-192.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body class="bg-slate-950 text-slate-100 font-sans antialiased">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const DEFAULT_ENTITIES = [
+            { id: 1, name: 'Personal', code: 'PR', ruc: 'N/A', reason: 'Finanzas Personales', driveFolderUrl: '', syncEnabled: true },
+            { id: 2, name: 'Soluciones Velcal', code: 'SV', ruc: '20601234561', reason: 'Soluciones Velcal S.A.C.', driveFolderUrl: '', syncEnabled: true },
+            { id: 3, name: 'Transportes Logística S.A.C.', code: 'TL', ruc: '20601234562', reason: 'Transportes Logística S.A.C.', driveFolderUrl: '', syncEnabled: true }
+        ];
+
+        const DEFAULT_TRANSACTIONS = [
+            { id: 'VEN-20261106-0001', type: 'ingreso', entity: 'Soluciones Velcal', amount: 28500, currency: 'S/.', category: 'Ventas / Servicios', costCenter: 'Operaciones & Logística', date: '2026-11-06', note: 'Servicio de flete industrial a provincia', hasSustento: true, sustentoFile: 'Factura_F001-492.pdf', fechaCreacion: '2026-11-06T14:32:10', ultimaModificacion: null, modificado: 'No', origen: 'App', estado: 'Activo' },
+            { id: 'COM-20261103-0001', type: 'gasto', entity: 'Soluciones Velcal', amount: 8400, currency: 'S/.', category: 'Proveedores & Insumos', costCenter: 'Mantenimiento & Flota', date: '2026-11-03', note: 'Mantenimiento preventivo camión Volvo', hasSustento: true, sustentoFile: 'Factura_Taller_Tire.pdf', fechaCreacion: '2026-11-03T09:15:00', ultimaModificacion: null, modificado: 'No', origen: 'App', estado: 'Activo' },
+            { id: 'COM-20261101-0001', type: 'gasto', entity: 'Soluciones Velcal', amount: 5600, currency: 'S/.', category: 'Planilla / Sueldos', costCenter: 'Personal & Planilla', date: '2026-11-01', note: 'Quincena conductores de ruta', hasSustento: true, sustentoFile: 'Planilla_Quincena_Nov.pdf', fechaCreacion: '2026-11-01T08:00:00', ultimaModificacion: null, modificado: 'No', origen: 'App', estado: 'Activo' }
+        ];
+
+        const DEFAULT_CATEGORIES = {
+            ingreso: ['Ventas / Servicios', 'Honorarios Profesional', 'Inversiones', 'Renta de Alquileres', 'Otros Ingresos'],
+            gasto: ['Planilla / Sueldos', 'Proveedores & Insumos', 'Impuestos (SUNAT)', 'Servicios Básicos', 'Alquileres', 'Marketing & Publicidad', 'Mantenimiento', 'Otros Gastos']
+        };
+
+        const DEFAULT_COST_CENTERS = ['Operaciones & Logística', 'Mantenimiento & Flota', 'Personal & Planilla', 'Administración General'];
+
+        const loadLS = (key, fallback) => {
+            try {
+                const raw = localStorage.getItem(key);
+                return raw ? JSON.parse(raw) : fallback;
+            } catch { return fallback; }
+        };
+        const saveLS = (key, value) => {
+            try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
+        };
+
+        const generateReadableId = (type, existingTransactions) => {
+            const prefix = type === 'ingreso' ? 'VEN' : 'COM';
+            const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
+            const prefixToday = `${prefix}-${today}`;
+            const existingToday = existingTransactions.filter(t => t.id && t.id.startsWith(prefixToday));
+            const nextSeq = existingToday.length + 1;
+            return `${prefixToday}-${String(nextSeq).padStart(4, '0')}`;
+        };
+
+        const validateCompanyCode = (code) => /^[A-Z]{2}$/.test(code);
+
+        function App() {
+            const [tab, setTab] = React.useState('resumen');
+            const [activeEntity, setActiveEntity] = React.useState('Todas');
+            const [showModal, setShowModal] = React.useState(false);
+            const [selectedYear, setSelectedYear] = React.useState('2026');
+
+            const [filterType, setFilterType] = React.useState('Todos');
+            const [filterCategory, setFilterCategory] = React.useState('Todas');
+
+            const [entities, setEntities] = React.useState(() => loadLS('finansync_entities', DEFAULT_ENTITIES));
+            const [transactions, setTransactions] = React.useState(() => loadLS('finansync_transactions', DEFAULT_TRANSACTIONS));
+            const [categories, setCategories] = React.useState(() => loadLS('finansync_categories', DEFAULT_CATEGORIES));
+            const [costCenters, setCostCenters] = React.useState(() => loadLS('finansync_costcenters', DEFAULT_COST_CENTERS));
+            const [appsScriptUrl, setAppsScriptUrl] = React.useState(() => loadLS('finansync_script_url', ''));
+            const [lastSyncTime, setLastSyncTime] = React.useState(() => loadLS('finansync_last_sync', null));
+
+            React.useEffect(() => saveLS('finansync_entities', entities), [entities]);
+            React.useEffect(() => saveLS('finansync_transactions', transactions), [transactions]);
+            React.useEffect(() => saveLS('finansync_categories', categories), [categories]);
+            React.useEffect(() => saveLS('finansync_costcenters', costCenters), [costCenters]);
+            React.useEffect(() => saveLS('finansync_script_url', appsScriptUrl), [appsScriptUrl]);
+            React.useEffect(() => saveLS('finansync_last_sync', lastSyncTime), [lastSyncTime]);
+
+            const [syncing, setSyncing] = React.useState(false);
+            const [syncResults, setSyncResults] = React.useState([]);
+            const [showSyncPanel, setShowSyncPanel] = React.useState(false);
+
+            const [showEntityModal, setShowEntityModal] = React.useState(false);
+            const [editingEntityId, setEditingEntityId] = React.useState(null);
+            const [entityForm, setEntityForm] = React.useState({ name: '', code: '', ruc: '', reason: '', driveFolderUrl: '', syncEnabled: true });
+            const [entityFormError, setEntityFormError] = React.useState('');
+
+            const [editingId, setEditingId] = React.useState(null);
+            const [formType, setFormType] = React.useState('gasto');
+            const [formEntity, setFormEntity] = React.useState('Soluciones Velcal');
+            const [formAmount, setFormAmount] = React.useState('');
+            const [formCurrency, setFormCurrency] = React.useState('S/.');
+            const [formCategory, setFormCategory] = React.useState('Proveedores & Insumos');
+            const [formCostCenter, setFormCostCenter] = React.useState('Operaciones & Logística');
+            const [formDate, setFormDate] = React.useState(new Date().toISOString().split('T')[0]);
+            const [formNote, setFormNote] = React.useState('');
+            const [formHasSustento, setFormHasSustento] = React.useState(false);
+            const [formFileName, setFormFileName] = React.useState('');
+
+            const [newCatIngreso, setNewCatIngreso] = React.useState('');
+            const [newCatGasto, setNewCatGasto] = React.useState('');
+            const [newCostCenter, setNewCostCenter] = React.useState('');
+
+            // ===== Sincronización (con fix de CORS: text/plain evita el preflight) =====
+            const handleSyncData = async (isAuto = false) => {
+                if (syncing) return;
+                const enabledEntities = entities.filter(e => e.syncEnabled && e.driveFolderUrl);
+                if (enabledEntities.length === 0) {
+                    if (!isAuto) alert('⚠️ Configura al menos una empresa con carpeta de Drive en la pestaña "Entidades".');
+                    return;
+                }
+                if (!appsScriptUrl) {
+                    if (!isAuto) alert('⚠️ Configura la URL de Apps Script en la pestaña "Ajustes".');
+                    return;
+                }
+                setSyncing(true);
+                setSyncResults([]);
+                setShowSyncPanel(true);
+                for (const ent of enabledEntities) {
+                    setSyncResults(prev => [...prev, { entity: ent.name, status: 'loading' }]);
+                    try {
+                        const localTx = transactions.filter(t => t.entity === ent.name);
+                        const response = await fetch(appsScriptUrl, {
+                            method: 'POST',
+                            // ✅ CLAVE: text/plain evita el preflight OPTIONS que causa el error CORS
+                            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                            body: JSON.stringify({
+                                action: 'sync',
+                                folderUrl: ent.driveFolderUrl,
+                                companyCode: ent.code,
+                                companyName: ent.name,
+                                transactions: localTx
+                            })
+                        });
+                        const data = await response.json();
+                        if (data.success && Array.isArray(data.transactions)) {
+                            setTransactions(prev => [...prev.filter(t => t.entity !== ent.name), ...data.transactions]);
+                            setSyncResults(prev => prev.map(r => r.entity === ent.name ? { entity: ent.name, status: 'ok', count: data.transactions.length } : r));
+                        } else {
+                            setSyncResults(prev => prev.map(r => r.entity === ent.name ? { entity: ent.name, status: 'error', message: data.error || 'Error desconocido' } : r));
+                        }
+                    } catch (err) {
+                        setSyncResults(prev => prev.map(r => r.entity === ent.name ? { entity: ent.name, status: 'error', message: err.message } : r));
+                    }
+                }
+                setSyncing(false);
+                setLastSyncTime(new Date().toISOString());
+            };
+
+            React.useEffect(() => {
+                const canAutoSync = appsScriptUrl && entities.some(e => e.syncEnabled && e.driveFolderUrl);
+                if (canAutoSync) handleSyncData(true);
+                // eslint-disable-next-line
+            }, []);
+
+            const openRegisterModal = (type) => {
+                setEditingId(null);
+                setFormType(type);
+                setFormAmount('');
+                setFormNote('');
+                setFormHasSustento(false);
+                setFormFileName('');
+                setShowModal(true);
+            };
+
+            const startEdit = (t) => {
+                setEditingId(t.id);
+                setFormType(t.type);
+                setFormEntity(t.entity);
+                setFormAmount(t.amount);
+                setFormCurrency(t.currency);
+                setFormCategory(t.category);
+                setFormCostCenter(t.costCenter);
+                setFormDate(t.date);
+                setFormNote(t.note);
+                setFormHasSustento(t.hasSustento);
+                setFormFileName(t.sustentoFile || '');
+                setShowModal(true);
+            };
+
+            const handleSaveTransaction = (e) => {
+                e.preventDefault();
+                if (!formAmount || !formNote) return;
+                const now = new Date().toISOString();
+                if (editingId) {
+                    setTransactions(transactions.map(t => t.id === editingId ? {
+                        ...t, type: formType, entity: formEntity, amount: parseFloat(formAmount), currency: formCurrency,
+                        category: formCategory, costCenter: formCostCenter, date: formDate, note: formNote,
+                        hasSustento: formHasSustento, sustentoFile: formFileName || t.sustentoFile,
+                        ultimaModificacion: now, modificado: 'Sí', origen: 'App'
+                    } : t));
+                } else {
+                    const newTx = {
+                        id: generateReadableId(formType, transactions), type: formType, entity: formEntity,
+                        amount: parseFloat(formAmount), currency: formCurrency, category: formCategory,
+                        costCenter: formCostCenter, date: formDate, note: formNote,
+                        hasSustento: formHasSustento, sustentoFile: formFileName || 'Sustento_Telegram.pdf',
+                        fechaCreacion: now, ultimaModificacion: null, modificado: 'No', origen: 'App', estado: 'Activo'
+                    };
+                    setTransactions([newTx, ...transactions]);
+                }
+                setShowModal(false);
+            };
+
+            const addCategory = (type) => {
+                const val = type === 'ingreso' ? newCatIngreso : newCatGasto;
+                if (!val.trim()) return;
+                setCategories({ ...categories, [type]: [...categories[type], val.trim()] });
+                if (type === 'ingreso') setNewCatIngreso(''); else setNewCatGasto('');
+            };
+            const removeCategory = (type, cat) => {
+                if (categories[type].length <= 1) return;
+                setCategories({ ...categories, [type]: categories[type].filter(c => c !== cat) });
+            };
+            const addCostCenter = () => {
+                if (!newCostCenter.trim()) return;
+                setCostCenters([...costCenters, newCostCenter.trim()]);
+                setNewCostCenter('');
+            };
+            const removeCostCenter = (cc) => {
+                if (costCenters.length <= 1) return;
+                setCostCenters(costCenters.filter(c => c !== cc));
+            };
+
+            const updateEntityFolder = (id, url) => {
+                setEntities(entities.map(e => e.id === id ? { ...e, driveFolderUrl: url } : e));
+            };
+            const toggleEntitySync = (id) => {
+                setEntities(entities.map(e => e.id === id ? { ...e, syncEnabled: !e.syncEnabled } : e));
+            };
+            const extractFolderId = (url) => {
+                if (!url) return '';
+                const match = url.match(/folders\/([a-zA-Z0-9_-]+)/);
+                return match ? match[1] : '';
+            };
+            const updateEntityCode = (id, newCode) => {
+                const cleaned = newCode.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 2);
+                if (entities.find(e => e.id !== id && e.code === cleaned)) return;
+                setEntities(entities.map(e => e.id === id ? { ...e, code: cleaned } : e));
+            };
+            const deleteEntity = (id) => {
+                const ent = entities.find(e => e.id === id);
+                if (!ent) return;
+                const txCount = transactions.filter(t => t.entity === ent.name).length;
+                const confirmMsg = txCount > 0
+                    ? `⚠️ ¿Eliminar "${ent.name}" (código ${ent.code})?\n\nTambién se eliminarán ${txCount} transacción(es) de esta empresa en la app.\n\nLos archivos en Drive NO se borrarán, solo dejarán de sincronizarse.\n\n¿Continuar?`
+                    : `¿Eliminar la empresa "${ent.name}" (código ${ent.code})?\n\nLos archivos en Drive NO se borrarán.`;
+                if (!window.confirm(confirmMsg)) return;
+                setEntities(entities.filter(e => e.id !== id));
+                setTransactions(transactions.filter(t => t.entity !== ent.name));
+                if (activeEntity === ent.name) setActiveEntity('Todas');
+            };
+            const openEntityModal = (entityToEdit = null) => {
+                if (entityToEdit) {
+                    setEditingEntityId(entityToEdit.id);
+                    setEntityForm({ name: entityToEdit.name, code: entityToEdit.code, ruc: entityToEdit.ruc, reason: entityToEdit.reason, driveFolderUrl: entityToEdit.driveFolderUrl, syncEnabled: entityToEdit.syncEnabled });
+                } else {
+                    setEditingEntityId(null);
+                    setEntityForm({ name: '', code: '', ruc: '', reason: '', driveFolderUrl: '', syncEnabled: true });
+                }
+                setEntityFormError('');
+                setShowEntityModal(true);
+            };
+            const saveNewEntity = (e) => {
+                e.preventDefault();
+                const trimmedName = entityForm.name.trim();
+                const trimmedCode = entityForm.code.trim().toUpperCase();
+                const trimmedRuc = entityForm.ruc.trim() || 'N/A';
+                const trimmedReason = entityForm.reason.trim() || trimmedName;
+                if (!trimmedName) return setEntityFormError('El nombre es obligatorio.');
+                if (!validateCompanyCode(trimmedCode)) return setEntityFormError('El código debe ser exactamente 2 letras mayúsculas (A–Z).');
+                if (entities.some(en => en.code === trimmedCode && en.id !== editingEntityId)) return setEntityFormError(`El código "${trimmedCode}" ya está en uso por otra empresa.`);
+                if (entities.some(en => en.name.toLowerCase() === trimmedName.toLowerCase() && en.id !== editingEntityId)) return setEntityFormError('Ya existe una empresa con ese nombre.');
+                if (editingEntityId) {
+                    const oldEntity = entities.find(en => en.id === editingEntityId);
+                    const oldName = oldEntity ? oldEntity.name : '';
+                    setEntities(entities.map(en => en.id === editingEntityId ? { ...en, name: trimmedName, code: trimmedCode, ruc: trimmedRuc, reason: trimmedReason, driveFolderUrl: entityForm.driveFolderUrl.trim(), syncEnabled: entityForm.syncEnabled } : en));
+                    if (oldName && oldName !== trimmedName) {
+                        setTransactions(transactions.map(t => t.entity === oldName ? { ...t, entity: trimmedName } : t));
+                        if (activeEntity === oldName) setActiveEntity(trimmedName);
+                    }
+                } else {
+                    const newId = Math.max(0, ...entities.map(en => en.id)) + 1;
+                    setEntities([...entities, { id: newId, name: trimmedName, code: trimmedCode, ruc: trimmedRuc, reason: trimmedReason, driveFolderUrl: entityForm.driveFolderUrl.trim(), syncEnabled: entityForm.syncEnabled }]);
+                }
+                setShowEntityModal(false);
+            };
+
+            const filteredTx = transactions.filter(t => {
+                const matchEntity = activeEntity === 'Todas' || t.entity === activeEntity;
+                const matchType = filterType === 'Todos' || (filterType === 'Ingresos' && t.type === 'ingreso') || (filterType === 'Gastos' && t.type === 'gasto');
+                const matchCat = filterCategory === 'Todas' || t.category === filterCategory;
+                return matchEntity && matchType && matchCat;
+            });
+
+            const entityFilteredTx = transactions.filter(t =>
+                t.estado === 'Activo' && (activeEntity === 'Todas' || t.entity === activeEntity)
+            );
+
+            const totalIngresos = entityFilteredTx.filter(t => t.type === 'ingreso').reduce((s, t) => s + t.amount, 0);
+            const totalGastos = entityFilteredTx.filter(t => t.type === 'gasto').reduce((s, t) => s + t.amount, 0);
+            const balance = totalIngresos - totalGastos;
+
+            const now = new Date();
+            const currentYear = now.getFullYear();
+            const currentMonthIdx = now.getMonth();
+            const monthNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+            const currentMonthName = monthNames[currentMonthIdx];
+            const isCurrentMonth = (dateStr) => {
+                if (!dateStr) return false;
+                const parts = String(dateStr).split('-');
+                if (parts.length < 2) return false;
+                return parseInt(parts[0]) === currentYear && (parseInt(parts[1]) - 1) === currentMonthIdx;
+            };
+            const currentMonthTx = entityFilteredTx.filter(t => isCurrentMonth(t.date));
+            const monthlyIngresos = currentMonthTx.filter(t => t.type === 'ingreso').reduce((s, t) => s + t.amount, 0);
+            const monthlyGastos = currentMonthTx.filter(t => t.type === 'gasto').reduce((s, t) => s + t.amount, 0);
+            const balanceMes = monthlyIngresos - monthlyGastos;
+
+            const chartMaxValue = Math.max(monthlyIngresos, monthlyGastos, 1);
+            const chartMaxHeight = 160;
+            const ventasHeight = (monthlyIngresos / chartMaxValue) * chartMaxHeight;
+            const comprasHeight = (monthlyGastos / chartMaxValue) * chartMaxHeight;
+            const margenOperativo = monthlyIngresos > 0 ? ((monthlyIngresos - monthlyGastos) / monthlyIngresos) * 100 : 0;
+
+            const fmt = (n) => n.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+            return (
+                <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
+                    <header className="bg-slate-900 border-b border-slate-800 p-4 sticky top-0 z-40 flex flex-col md:flex-row justify-between items-center gap-4">
+                        <div className="flex items-center gap-3">
+                            <div className="bg-emerald-600 p-2 rounded-xl font-bold text-xl">FS</div>
+                            <div>
+                                <h1 className="font-bold text-lg">FinanSync Pro</h1>
+                                <p className="text-xs text-slate-400">Control Multi-Empresa & Sustentos</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2 overflow-x-auto w-full md:w-auto pb-2 md:pb-0">
+                            <button onClick={() => setActiveEntity('Todas')} className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${activeEntity === 'Todas' ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-300'}`}>Todas</button>
+                            {entities.map(ent => (
+                                <button key={ent.id} onClick={() => setActiveEntity(ent.name)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition ${activeEntity === ent.name ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-300'}`}>
+                                    {ent.name}
+                                </button>
+                            ))}
+                        </div>
+                        <button onClick={() => handleSyncData(false)} disabled={syncing}
+                            className={`${syncing ? 'bg-slate-700 cursor-wait' : 'bg-blue-600 hover:bg-blue-500'} text-white px-4 py-2 rounded-lg text-xs font-bold transition w-full md:w-auto flex items-center justify-center gap-2`}>
+                            {syncing ? '🔄 Actualizando...' : '🔄 Actualizar Data'}
+                        </button>
+                    </header>
+
+                    {showSyncPanel && syncResults.length > 0 && (
+                        <div className="bg-slate-800 border-b border-slate-700 p-3">
+                            <div className="max-w-7xl mx-auto flex flex-wrap items-center gap-3 text-xs">
+                                <span className="font-bold text-slate-300">Sincronización:</span>
+                                {syncResults.map((r, i) => (
+                                    <span key={i} className={`px-2 py-1 rounded-lg flex items-center gap-1 ${r.status === 'loading' ? 'bg-slate-700 text-slate-300' : r.status === 'ok' ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' : 'bg-rose-950 text-rose-400 border border-rose-800'}`}>
+                                        {r.status === 'loading' && '⏳'}{r.status === 'ok' && '✅'}{r.status === 'error' && '❌'}
+                                        <span className="font-semibold">{r.entity}</span>
+                                        {r.status === 'ok' && <span>({r.count})</span>}
+                                        {r.status === 'error' && <span className="text-[10px]">({r.message})</span>}
+                                    </span>
+                                ))}
+                                {!syncing && <button onClick={() => setShowSyncPanel(false)} className="ml-auto text-slate-400 hover:text-slate-200">✕</button>}
+                            </div>
+                        </div>
+                    )}
+
+                    <main className="flex-1 p-4 max-w-7xl mx-auto w-full pb-24">
+                        {tab === 'resumen' && (
+                            <div className="space-y-6">
+                                <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl space-y-6">
+                                    <div className="flex justify-between items-center">
+                                        <div>
+                                            <p className="text-slate-400 text-xs uppercase tracking-wider font-semibold">Balance Disponible ({activeEntity})</p>
+                                            <h2 className="text-3xl font-extrabold text-emerald-400 mt-1">S/. {fmt(balance)}</h2>
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <button onClick={() => openRegisterModal('ingreso')} className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3.5 px-4 rounded-xl flex items-center justify-center gap-2 transition shadow-lg text-sm">
+                                            <span className="text-lg">＋</span> Registrar Ingreso
+                                        </button>
+                                        <button onClick={() => openRegisterModal('gasto')} className="bg-rose-600 hover:bg-rose-500 text-white font-bold py-3.5 px-4 rounded-xl flex items-center justify-center gap-2 transition shadow-lg text-sm">
+                                            <span className="text-lg">－</span> Registrar Gasto
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="bg-slate-900 p-5 rounded-2xl border border-slate-800">
+                                        <p className="text-slate-400 text-xs font-semibold">Ingresos del Mes</p>
+                                        <h3 className="text-2xl font-bold text-blue-400 mt-1">S/. {fmt(monthlyIngresos)}</h3>
+                                        <p className="text-[10px] text-slate-500 mt-1">{currentMonthName} {currentYear}</p>
+                                    </div>
+                                    <div className="bg-slate-900 p-5 rounded-2xl border border-slate-800">
+                                        <p className="text-slate-400 text-xs font-semibold">Gastos del Mes</p>
+                                        <h3 className="text-2xl font-bold text-rose-400 mt-1">S/. {fmt(monthlyGastos)}</h3>
+                                        <p className="text-[10px] text-slate-500 mt-1">{currentMonthName} {currentYear}</p>
+                                    </div>
+                                </div>
+                                {lastSyncTime && (
+                                    <p className="text-[11px] text-slate-500 text-center">Última sincronización: {new Date(lastSyncTime).toLocaleString('es-PE')}</p>
+                                )}
+                            </div>
+                        )}
+
+                        {tab === 'indicadores' && (
+                            <div className="space-y-6">
+                                <div>
+                                    <h2 className="text-xl font-bold">Indicadores Financieros (KPIs)</h2>
+                                    <p className="text-xs text-slate-400">Datos de {currentMonthName} {currentYear} para {activeEntity}</p>
+                                </div>
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                    <div className="bg-slate-900 p-5 rounded-2xl border border-slate-800">
+                                        <p className="text-slate-400 text-xs">Ingresos del Mes</p>
+                                        <h3 className="text-2xl font-bold text-emerald-400 mt-1">S/. {fmt(monthlyIngresos)}</h3>
+                                        <p className="text-[10px] text-slate-500 mt-1">{currentMonthName} {currentYear}</p>
+                                    </div>
+                                    <div className="bg-slate-900 p-5 rounded-2xl border border-slate-800">
+                                        <p className="text-slate-400 text-xs">Gastos del Mes</p>
+                                        <h3 className="text-2xl font-bold text-rose-400 mt-1">S/. {fmt(monthlyGastos)}</h3>
+                                        <p className="text-[10px] text-slate-500 mt-1">{currentMonthName} {currentYear}</p>
+                                    </div>
+                                    <div className="bg-slate-900 p-5 rounded-2xl border border-slate-800">
+                                        <p className="text-slate-400 text-xs">Margen Operativo</p>
+                                        <h3 className={`text-2xl font-bold mt-1 ${margenOperativo >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{margenOperativo.toFixed(1)}%</h3>
+                                        <p className="text-[10px] text-slate-500 mt-1">(Ingresos − Gastos) / Ingresos</p>
+                                    </div>
+                                    <div className="bg-slate-900 p-5 rounded-2xl border border-slate-800">
+                                        <p className="text-slate-400 text-xs">Balance del Mes</p>
+                                        <h3 className={`text-2xl font-bold mt-1 ${balanceMes >= 0 ? 'text-blue-400' : 'text-rose-400'}`}>S/. {fmt(balanceMes)}</h3>
+                                        <p className="text-[10px] text-slate-500 mt-1">{currentMonthTx.length} movimiento(s)</p>
+                                    </div>
+                                </div>
+                                <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 space-y-4">
+                                    <div className="flex justify-between items-center flex-wrap gap-2">
+                                        <div>
+                                            <h3 className="font-bold text-sm">Ventas vs Compras — {currentMonthName} {currentYear}</h3>
+                                            <p className="text-xs text-slate-400">Comparativo del mes actual</p>
+                                        </div>
+                                        <span className="bg-slate-950 text-slate-300 text-[11px] px-2.5 py-1 rounded-lg border border-slate-800">{activeEntity}</span>
+                                    </div>
+                                    {monthlyIngresos === 0 && monthlyGastos === 0 ? (
+                                        <div className="flex flex-col items-center justify-center py-12 text-slate-500">
+                                            <span className="text-4xl mb-2">📊</span>
+                                            <p className="text-sm text-center">Sin movimientos registrados en {currentMonthName} {currentYear}.</p>
+                                            <p className="text-xs mt-1 text-center">Registra un ingreso o gasto con fecha de este mes para ver el gráfico.</p>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <div className="h-64 flex items-end justify-around gap-6 border-b border-slate-800 pb-2 pt-4">
+                                                <div className="flex flex-col items-center gap-2 flex-1 max-w-[140px]">
+                                                    <span className="text-xs font-bold text-emerald-400 whitespace-nowrap">S/. {fmt(monthlyIngresos)}</span>
+                                                    <div className="w-16 md:w-24 bg-gradient-to-t from-emerald-600 to-emerald-400 rounded-t-lg transition-all duration-500 shadow-lg shadow-emerald-900/30"
+                                                        style={{ height: `${Math.max(ventasHeight, monthlyIngresos > 0 ? 8 : 0)}px` }}></div>
+                                                    <span className="text-xs text-slate-300 font-bold">Ventas</span>
+                                                </div>
+                                                <div className="flex flex-col items-center gap-2 flex-1 max-w-[140px]">
+                                                    <span className="text-xs font-bold text-rose-400 whitespace-nowrap">S/. {fmt(monthlyGastos)}</span>
+                                                    <div className="w-16 md:w-24 bg-gradient-to-t from-rose-600 to-rose-400 rounded-t-lg transition-all duration-500 shadow-lg shadow-rose-900/30"
+                                                        style={{ height: `${Math.max(comprasHeight, monthlyGastos > 0 ? 8 : 0)}px` }}></div>
+                                                    <span className="text-xs text-slate-300 font-bold">Compras</span>
+                                                </div>
+                                            </div>
+                                            <div className="flex justify-between items-center text-xs text-slate-400 pt-2 border-t border-slate-800 flex-wrap gap-2">
+                                                <span>Diferencia: <span className={balanceMes >= 0 ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'}>S/. {fmt(balanceMes)}</span></span>
+                                                <span>{currentMonthTx.length} movimiento(s) este mes</span>
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {tab === 'eeff' && (
+                            <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 space-y-6">
+                                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-800 pb-4">
+                                    <div>
+                                        <h2 className="text-xl font-bold">Estados Financieros (EEFF)</h2>
+                                        <p className="text-xs text-slate-400">Estado de Pérdidas y Ganancias (P&L)</p>
+                                    </div>
+                                    <div className="bg-slate-950 p-1 rounded-lg border border-slate-800 flex text-xs">
+                                        <button onClick={() => setSelectedYear('2026')} className={`px-3 py-1 rounded-md font-bold ${selectedYear === '2026' ? 'bg-emerald-600 text-white' : 'text-slate-400'}`}>2026</button>
+                                        <button onClick={() => setSelectedYear('2025')} className={`px-3 py-1 rounded-md font-bold ${selectedYear === '2025' ? 'bg-emerald-600 text-white' : 'text-slate-400'}`}>2025</button>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-3 gap-4 bg-slate-950 p-4 rounded-xl border border-slate-800 text-center">
+                                    <div><p className="text-slate-400 text-xs">Ventas Totales</p><p className="text-emerald-400 font-bold text-base mt-1">S/. 85,000.00</p></div>
+                                    <div><p className="text-slate-400 text-xs">Util. Bruta</p><p className="text-emerald-400 font-bold text-base mt-1">S/. 47,000.00</p></div>
+                                    <div><p className="text-slate-400 text-xs">Utilidad Neta</p><p className="text-emerald-400 font-bold text-base mt-1">S/. 25,000.00</p></div>
+                                </div>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left text-sm">
+                                        <thead className="bg-slate-950 text-slate-400 border-b border-slate-800 text-xs">
+                                            <tr><th className="p-3">Rubro Contable</th><th className="p-3 text-right">Monto</th></tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-800/60">
+                                            <tr><td className="p-3 font-medium">Ingresos Operativos (Ventas)</td><td className="p-3 text-right text-emerald-400 font-bold">S/. 85,000.00</td></tr>
+                                            <tr><td className="p-3 font-medium">Costo de Ventas / Servicios (COGS)</td><td className="p-3 text-right text-rose-400">S/. -38,000.00</td></tr>
+                                            <tr className="bg-slate-950/70"><td className="p-3 font-bold text-emerald-400">(=) UTILIDAD BRUTA</td><td className="p-3 text-right text-emerald-400 font-bold">S/. 47,000.00</td></tr>
+                                            <tr><td className="p-3 font-medium">Gastos de Administración y Ventas</td><td className="p-3 text-right text-rose-400">S/. -19,500.00</td></tr>
+                                            <tr className="bg-slate-950/70"><td className="p-3 font-bold text-purple-400">(=) UTILIDAD OPERATIVA (EBITDA)</td><td className="p-3 text-right text-purple-400 font-bold">S/. 27,500.00</td></tr>
+                                            <tr><td className="p-3 font-medium">Gastos Financieros e Impuestos</td><td className="p-3 text-right text-rose-400">S/. -2,500.00</td></tr>
+                                            <tr className="bg-slate-950"><td className="p-3 font-extrabold text-emerald-400 text-base">(=) UTILIDAD NETA DEL PERIODO</td><td className="p-3 text-right text-emerald-400 font-extrabold text-base">S/. 25,000.00</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+
+                        {tab === 'historial' && (
+                            <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 space-y-6">
+                                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                                    <h2 className="text-xl font-bold">Historial de Transacciones</h2>
+                                    <button onClick={() => openRegisterModal('gasto')} className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-xl text-xs font-bold">+ Registrar Nuevo</button>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-950 p-4 rounded-xl border border-slate-800">
+                                    <div>
+                                        <label className="text-xs text-slate-400 block mb-1">Filtrar por Tipo</label>
+                                        <select value={filterType} onChange={e => setFilterType(e.target.value)} className="w-full bg-slate-900 border border-slate-800 p-2 rounded-lg text-xs">
+                                            <option value="Todos">Todos los Tipos</option>
+                                            <option value="Ingresos">Ingresos</option>
+                                            <option value="Gastos">Gastos</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="text-xs text-slate-400 block mb-1">Filtrar por Categoría</label>
+                                        <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)} className="w-full bg-slate-900 border border-slate-800 p-2 rounded-lg text-xs">
+                                            <option value="Todas">Todas las Categorías</option>
+                                            {[...categories.ingreso, ...categories.gasto].map(c => <option key={c} value={c}>{c}</option>)}
+                                        </select>
+                                    </div>
+                                </div>
+                                <div className="space-y-3">
+                                    {filteredTx.map(t => (
+                                        <div key={t.id} className="p-4 bg-slate-950 rounded-xl border border-slate-800 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                                            <div className="space-y-1 flex-1">
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <h4 className="font-bold text-sm text-slate-100">{t.note}</h4>
+                                                    <span className="text-[10px] font-mono text-slate-500 bg-slate-900 px-1.5 py-0.5 rounded">{t.id}</span>
+                                                    {t.modificado === 'Sí' && <span className="text-[10px] text-amber-400 bg-amber-950/40 px-1.5 py-0.5 rounded border border-amber-900/40">✏️ Editado ({t.origen})</span>}
+                                                    {t.estado === 'Anulado' && <span className="text-[10px] text-rose-400 bg-rose-950/40 px-1.5 py-0.5 rounded border border-rose-900/40">Anulado</span>}
+                                                </div>
+                                                <p className="text-xs text-slate-400">{t.category} • {t.costCenter} • <span className="text-slate-300 font-medium">{t.entity}</span></p>
+                                                {t.hasSustento && <span className="inline-flex items-center gap-1 text-[11px] text-blue-400 bg-blue-950/40 px-2 py-0.5 rounded border border-blue-900/40">📄 {t.sustentoFile}</span>}
+                                            </div>
+                                            <div className="flex items-center justify-between w-full md:w-auto md:justify-end gap-4 border-t md:border-t-0 border-slate-900 pt-2 md:pt-0">
+                                                <div className="text-left md:text-right">
+                                                    <span className={`font-extrabold text-base block ${t.type === 'ingreso' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                                        {t.type === 'ingreso' ? '+' : '-'} {t.currency} {t.amount.toFixed(2)}
+                                                    </span>
+                                                    <span className="text-[10px] text-slate-500">{t.date}</span>
+                                                </div>
+                                                <button onClick={() => startEdit(t)} className="bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-lg text-xs font-semibold">Editar</button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {filteredTx.length === 0 && <p className="text-center text-slate-500 text-sm py-6">No hay transacciones con estos filtros.</p>}
+                                </div>
+                            </div>
+                        )}
+
+                        {tab === 'entidades' && (
+                            <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 space-y-4">
+                                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+                                    <div>
+                                        <h2 className="text-xl font-bold">Empresas & Finanzas Personales</h2>
+                                        <p className="text-xs text-slate-400 mt-1">Cada empresa tiene un código de 2 letras. Los archivos en Drive se llaman <code className="text-emerald-400">registro_ventas_XX</code> y <code className="text-emerald-400">registro_compras_XX</code>.</p>
+                                    </div>
+                                    <button onClick={() => openEntityModal()} className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap">+ Agregar Empresa</button>
+                                </div>
+                                <div className="space-y-4">
+                                    {entities.map(ent => {
+                                        const codeInUse = entities.filter(e => e.code === ent.code).length > 1;
+                                        return (
+                                            <div key={ent.id} className="p-4 bg-slate-950 rounded-xl border border-slate-800 space-y-3">
+                                                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+                                                    <div className="flex items-center gap-3 w-full">
+                                                        <div className="flex flex-col">
+                                                            <label className="text-[10px] text-slate-500 mb-0.5">Código</label>
+                                                            <input type="text" maxLength={2} value={ent.code} onChange={e => updateEntityCode(ent.id, e.target.value)}
+                                                                className={`w-16 bg-slate-900 border ${codeInUse ? 'border-rose-600' : 'border-emerald-700'} text-emerald-400 font-mono font-bold text-center px-2 py-1.5 rounded-lg text-sm uppercase focus:outline-none focus:ring-2 focus:ring-emerald-600`} />
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <h3 className="font-bold text-base truncate">{ent.name}</h3>
+                                                            <p className="text-xs text-slate-400 truncate">RUC: {ent.ruc} • {ent.reason}</p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center gap-2 w-full md:w-auto justify-between flex-wrap">
+                                                        <label className="flex items-center gap-2 cursor-pointer">
+                                                            <input type="checkbox" checked={ent.syncEnabled} onChange={() => toggleEntitySync(ent.id)} className="w-4 h-4 accent-emerald-500" />
+                                                            <span className="text-xs text-slate-300">Sincronizar</span>
+                                                        </label>
+                                                        <button onClick={() => openEntityModal(ent)} className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-3 py-1.5 rounded-lg text-xs font-semibold">✏️ Editar</button>
+                                                        <button onClick={() => deleteEntity(ent.id)} className="bg-rose-950 hover:bg-rose-900 text-rose-400 border border-rose-800 px-3 py-1.5 rounded-lg text-xs font-semibold">🗑 Eliminar</button>
+                                                    </div>
+                                                </div>
+                                                {codeInUse && <p className="text-[11px] text-rose-400 bg-rose-950/40 border border-rose-900/40 px-2 py-1 rounded">⚠️ Este código está repetido. Cada empresa debe tener un código único.</p>}
+                                                <div>
+                                                    <label className="text-xs text-slate-400 block mb-1">Enlace de la carpeta de Drive</label>
+                                                    <input type="url" placeholder="https://drive.google.com/drive/folders/..." value={ent.driveFolderUrl} onChange={e => updateEntityFolder(ent.id, e.target.value)} className="w-full bg-slate-900 border border-slate-800 p-2 rounded-lg text-xs font-mono" />
+                                                    {ent.driveFolderUrl && <p className="text-[10px] text-slate-500 mt-1">ID detectado: <span className="font-mono text-emerald-400">{extractFolderId(ent.driveFolderUrl) || '⚠️ formato inválido'}</span></p>}
+                                                    <p className="text-[10px] text-slate-500 mt-1">Archivos esperados: <code className="text-slate-300">registro_ventas_{ent.code}</code> y <code className="text-slate-300">registro_compras_{ent.code}</code></p>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                    {entities.length === 0 && <p className="text-center text-slate-500 text-sm py-6">No hay empresas. Agrega una con el botón "+ Agregar Empresa".</p>}
+                                </div>
+                            </div>
+                        )}
+
+                        {tab === 'config' && (
+                            <div className="space-y-6">
+                                <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800">
+                                    <h2 className="text-xl font-bold mb-2">Conexión con Google Apps Script</h2>
+                                    <p className="text-xs text-slate-400 mb-4">Pega aquí la URL de tu implementación de Apps Script (termina en <code className="text-emerald-400">/exec</code>).</p>
+                                    <input type="url" placeholder="https://script.google.com/macros/s/.../exec" value={appsScriptUrl} onChange={e => setAppsScriptUrl(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-2 rounded-lg text-xs font-mono" />
+                                    {lastSyncTime && <p className="text-[11px] text-slate-500 mt-2">Última sincronización: <span className="text-slate-300">{new Date(lastSyncTime).toLocaleString('es-PE')}</span></p>}
+                                </div>
+                                <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800">
+                                    <h2 className="text-xl font-bold mb-4">Gestión de Listas Maestras</h2>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                        <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
+                                            <h3 className="font-semibold text-xs text-emerald-400 mb-3">Categorías de Ingresos</h3>
+                                            <div className="space-y-2 mb-4 max-h-48 overflow-y-auto">
+                                                {categories.ingreso.map(c => (
+                                                    <div key={c} className="flex justify-between items-center bg-slate-900 px-2.5 py-1.5 rounded text-xs"><span>{c}</span><button onClick={() => removeCategory('ingreso', c)} className="text-rose-400 font-bold px-1.5 hover:text-rose-300">✕</button></div>
+                                                ))}
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <input type="text" placeholder="Nueva categoría..." value={newCatIngreso} onChange={e => setNewCatIngreso(e.target.value)} className="w-full bg-slate-900 border border-slate-800 p-1.5 rounded text-xs" />
+                                                <button onClick={() => addCategory('ingreso')} className="bg-emerald-600 text-white px-3 py-1 rounded text-xs font-bold">+</button>
+                                            </div>
+                                        </div>
+                                        <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
+                                            <h3 className="font-semibold text-xs text-rose-400 mb-3">Categorías de Gastos</h3>
+                                            <div className="space-y-2 mb-4 max-h-48 overflow-y-auto">
+                                                {categories.gasto.map(c => (
+                                                    <div key={c} className="flex justify-between items-center bg-slate-900 px-2.5 py-1.5 rounded text-xs"><span>{c}</span><button onClick={() => removeCategory('gasto', c)} className="text-rose-400 font-bold px-1.5 hover:text-rose-300">✕</button></div>
+                                                ))}
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <input type="text" placeholder="Nueva categoría..." value={newCatGasto} onChange={e => setNewCatGasto(e.target.value)} className="w-full bg-slate-900 border border-slate-800 p-1.5 rounded text-xs" />
+                                                <button onClick={() => addCategory('gasto')} className="bg-rose-600 text-white px-3 py-1 rounded text-xs font-bold">+</button>
+                                            </div>
+                                        </div>
+                                        <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
+                                            <h3 className="font-semibold text-xs text-blue-400 mb-3">Centros de Costo</h3>
+                                            <div className="space-y-2 mb-4 max-h-48 overflow-y-auto">
+                                                {costCenters.map(cc => (
+                                                    <div key={cc} className="flex justify-between items-center bg-slate-900 px-2.5 py-1.5 rounded text-xs"><span>{cc}</span><button onClick={() => removeCostCenter(cc)} className="text-rose-400 font-bold px-1.5 hover:text-rose-300">✕</button></div>
+                                                ))}
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <input type="text" placeholder="Nuevo centro..." value={newCostCenter} onChange={e => setNewCostCenter(e.target.value)} className="w-full bg-slate-900 border border-slate-800 p-1.5 rounded text-xs" />
+                                                <button onClick={addCostCenter} className="bg-blue-600 text-white px-3 py-1 rounded text-xs font-bold">+</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </main>
+
+                    {showModal && (
+                        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+                            <div className="bg-slate-900 w-full max-w-md p-6 rounded-2xl border border-slate-800 space-y-4 my-auto">
+                                <div className="flex justify-between items-center">
+                                    <h3 className="font-bold text-lg">{editingId ? 'Editar Movimiento' : `Registrar ${formType === 'ingreso' ? 'Ingreso' : 'Gasto'}`}</h3>
+                                    <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-200 font-bold">✕</button>
+                                </div>
+                                <form onSubmit={handleSaveTransaction} className="space-y-4 text-xs">
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="text-slate-400 block mb-1">Empresa</label>
+                                            <select value={formEntity} onChange={e => setFormEntity(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-2 rounded-lg">
+                                                {entities.map(e => <option key={e.id} value={e.name}>{e.name}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="text-slate-400 block mb-1">Monto (S/.)</label>
+                                            <input type="number" step="0.01" placeholder="0.00" value={formAmount} onChange={e => setFormAmount(e.target.value)} required className="w-full bg-slate-950 border border-slate-800 p-2 rounded-lg font-bold" />
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="text-slate-400 block mb-1">Categoría</label>
+                                            <select value={formCategory} onChange={e => setFormCategory(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-2 rounded-lg">
+                                                {(categories[formType] || []).map(c => <option key={c} value={c}>{c}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="text-slate-400 block mb-1">Centro de Costo</label>
+                                            <select value={formCostCenter} onChange={e => setFormCostCenter(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-2 rounded-lg">
+                                                {costCenters.map(cc => <option key={cc} value={cc}>{cc}</option>)}
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="text-slate-400 block mb-1">Fecha</label>
+                                        <input type="date" value={formDate} onChange={e => setFormDate(e.target.value)} className="w-full bg-slate-950 border border-slate-800 p-2 rounded-lg" />
+                                    </div>
+                                    <div>
+                                        <label className="text-slate-400 block mb-1">Descripción / Concepto</label>
+                                        <input type="text" placeholder="Ej. Servicio de flete a minera" value={formNote} onChange={e => setFormNote(e.target.value)} required className="w-full bg-slate-950 border border-slate-800 p-2 rounded-lg" />
+                                    </div>
+                                    <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-2">
+                                        <div className="flex items-center gap-2">
+                                            <input type="checkbox" id="sustento" checked={formHasSustento} onChange={e => setFormHasSustento(e.target.checked)} className="w-4 h-4 accent-emerald-500" />
+                                            <label htmlFor="sustento" className="font-semibold cursor-pointer">Adjuntar Sustento (PDF / Foto de Telegram)</label>
+                                        </div>
+                                        {formHasSustento && <input type="text" placeholder="Nombre de archivo (ej. Factura_001.pdf)" value={formFileName} onChange={e => setFormFileName(e.target.value)} className="w-full bg-slate-900 border border-slate-800 p-1.5 rounded text-xs" />}
+                                    </div>
+                                    <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 rounded-xl transition">Guardar Registro</button>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+
+                    {showEntityModal && (
+                        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+                            <div className="bg-slate-900 w-full max-w-md p-6 rounded-2xl border border-slate-800 space-y-4 my-auto">
+                                <div className="flex justify-between items-center">
+                                    <h3 className="font-bold text-lg">{editingEntityId ? 'Editar Empresa' : 'Agregar Nueva Empresa'}</h3>
+                                    <button onClick={() => setShowEntityModal(false)} className="text-slate-400 hover:text-slate-200 font-bold">✕</button>
+                                </div>
+                                <form onSubmit={saveNewEntity} className="space-y-3 text-xs">
+                                    <div>
+                                        <label className="text-slate-400 block mb-1">Nombre de la empresa *</label>
+                                        <input type="text" placeholder="Ej. Comercial XYZ S.A.C." value={entityForm.name} onChange={e => setEntityForm({ ...entityForm, name: e.target.value })} required className="w-full bg-slate-950 border border-slate-800 p-2 rounded-lg" />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="text-slate-400 block mb-1">Código (2 letras) *</label>
+                                            <input type="text" maxLength={2} placeholder="XX" value={entityForm.code} onChange={e => setEntityForm({ ...entityForm, code: e.target.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 2) })} required className="w-full bg-slate-950 border border-slate-800 p-2 rounded-lg font-mono font-bold text-center text-emerald-400 uppercase" />
+                                        </div>
+                                        <div>
+                                            <label className="text-slate-400 block mb-1">RUC</label>
+                                            <input type="text" placeholder="20601234567" value={entityForm.ruc} onChange={e => setEntityForm({ ...entityForm, ruc: e.target.value })} className="w-full bg-slate-950 border border-slate-800 p-2 rounded-lg" />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="text-slate-400 block mb-1">Razón social</label>
+                                        <input type="text" placeholder="(opcional)" value={entityForm.reason} onChange={e => setEntityForm({ ...entityForm, reason: e.target.value })} className="w-full bg-slate-950 border border-slate-800 p-2 rounded-lg" />
+                                    </div>
+                                    <div>
+                                        <label className="text-slate-400 block mb-1">Enlace de carpeta de Drive</label>
+                                        <input type="url" placeholder="https://drive.google.com/drive/folders/..." value={entityForm.driveFolderUrl} onChange={e => setEntityForm({ ...entityForm, driveFolderUrl: e.target.value })} className="w-full bg-slate-950 border border-slate-800 p-2 rounded-lg font-mono" />
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <input type="checkbox" id="newSync" checked={entityForm.syncEnabled} onChange={e => setEntityForm({ ...entityForm, syncEnabled: e.target.checked })} className="w-4 h-4 accent-emerald-500" />
+                                        <label htmlFor="newSync" className="cursor-pointer">Activar sincronización con Drive</label>
+                                    </div>
+                                    {editingEntityId && entityForm.name.trim() !== entities.find(e => e.id === editingEntityId)?.name && (
+                                        <p className="text-[11px] text-amber-400 bg-amber-950/40 border border-amber-900/40 px-2 py-1 rounded">ℹ️ Al cambiar el nombre, las transacciones existentes se actualizarán automáticamente.</p>
+                                    )}
+                                    {entityFormError && <p className="text-rose-400 bg-rose-950/40 border border-rose-900/40 px-2 py-1.5 rounded text-[11px]">⚠️ {entityFormError}</p>}
+                                    <p className="text-[10px] text-slate-500">Archivos esperados en Drive: <code className="text-slate-300">registro_ventas_{entityForm.code || 'XX'}</code> y <code className="text-slate-300">registro_compras_{entityForm.code || 'XX'}</code></p>
+                                    <div className="flex gap-2 pt-2">
+                                        <button type="button" onClick={() => setShowEntityModal(false)} className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold py-2.5 rounded-xl transition">Cancelar</button>
+                                        <button type="submit" className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 rounded-xl transition">{editingEntityId ? 'Guardar Cambios' : 'Guardar Empresa'}</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+
+                    <nav className="bg-slate-900 border-t border-slate-800 fixed bottom-0 left-0 right-0 z-40 flex justify-around p-2 text-xs font-medium">
+                        {[
+                            { key: 'resumen', icon: '📊', label: 'Resumen' },
+                            { key: 'indicadores', icon: '📈', label: 'Indicadores' },
+                            { key: 'eeff', icon: '📑', label: 'EEFF' },
+                            { key: 'historial', icon: '📝', label: 'Historial' },
+                            { key: 'entidades', icon: '🏢', label: 'Entidades' },
+                            { key: 'config', icon: '⚙️', label: 'Ajustes' }
+                        ].map(item => (
+                            <button key={item.key} onClick={() => setTab(item.key)} className={`flex flex-col items-center p-2 rounded-lg ${tab === item.key ? 'text-emerald-400 font-bold' : 'text-slate-400'}`}>
+                                {item.icon} <span>{item.label}</span>
+                            </button>
+                        ))}
+                    </nav>
+                </div>
+            );
+        }
+
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('./sw.js')
+            .then(reg => console.log('Service Worker registrado:', reg))
+            .catch(err => console.warn('Error al registrar SW:', err));
+        });
+      }
+    </script>
+</body>
+</html>
