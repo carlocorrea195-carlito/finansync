@@ -22,13 +22,8 @@
             { id: 3, name: 'Transportes Logística S.A.C.', code: 'TL', ruc: '20601234562', reason: 'Transportes Logística S.A.C.', driveFolderUrl: '', syncEnabled: true }
         ];
 
-        const DEFAULT_TRANSACTIONS = [
-            { id: 'VEN-20261106-0001', type: 'ingreso', entity: 'Soluciones Velcal', amount: 28500, currency: 'S/.', category: 'Ventas / Servicios', costCenter: 'Operaciones & Logística', date: '2026-11-06', note: 'Servicio de flete industrial a provincia', hasSustento: true, sustentoFile: 'Factura_F001-492.pdf', fechaCreacion: '2026-11-06T14:32:10', ultimaModificacion: null, modificado: 'No', origen: 'App', estado: 'Activo', pendingSync: false },
-            { id: 'COM-20261103-0001', type: 'gasto', entity: 'Soluciones Velcal', amount: 8400, currency: 'S/.', category: 'Proveedores & Insumos', costCenter: 'Mantenimiento & Flota', date: '2026-11-03', note: 'Mantenimiento preventivo camión Volvo', hasSustento: true, sustentoFile: 'Factura_Taller_Tire.pdf', fechaCreacion: '2026-11-03T09:15:00', ultimaModificacion: null, modificado: 'No', origen: 'App', estado: 'Activo', pendingSync: false },
-            { id: 'COM-20261101-0001', type: 'gasto', entity: 'Soluciones Velcal', amount: 5600, currency: 'S/.', category: 'Planilla / Sueldos', costCenter: 'Personal & Planilla', date: '2026-11-01', note: 'Quincena conductores de ruta', hasSustento: true, sustentoFile: 'Planilla_Quincena_Nov.pdf', fechaCreacion: '2026-11-01T08:00:00', ultimaModificacion: null, modificado: 'No', origen: 'App', estado: 'Activo', pendingSync: false }
-        ];
+        const DEFAULT_TRANSACTIONS = [];
 
-        // Listas maestras por empresa
         const DEFAULT_CATEGORIES_BY_ENTITY = {
             'Personal': {
                 ingreso: ['Salario', 'Honorarios', 'Inversiones', 'Alquiler', 'Otros Ingresos'],
@@ -50,10 +45,8 @@
             'Transportes Logística S.A.C.': ['Operaciones & Logística', 'Mantenimiento & Flota', 'Personal & Planilla', 'Administración General']
         };
 
-        // Migración: convertir listas globales viejas a por-empresa
         const migrateCategories = (stored, entities) => {
             if (!stored) return DEFAULT_CATEGORIES_BY_ENTITY;
-            // Si es el formato viejo {ingreso:[], gasto:[]}
             if (Array.isArray(stored.ingreso)) {
                 const migrated = {};
                 entities.forEach(e => {
@@ -61,7 +54,6 @@
                 });
                 return migrated;
             }
-            // Ya es formato nuevo
             return stored;
         };
 
@@ -96,6 +88,16 @@
 
         const validateCompanyCode = (code) => /^[A-Z]{2}$/.test(code);
 
+        // Agrupa un array por una clave y suma montos. Devuelve [[label, total], ...] ordenado desc
+        const groupAndSum = (arr, key) => {
+            const map = {};
+            arr.forEach(t => {
+                const k = (t[key] && String(t[key]).trim()) || 'Sin asignar';
+                map[k] = (map[k] || 0) + (Number(t.amount) || 0);
+            });
+            return Object.entries(map).sort((a, b) => b[1] - a[1]);
+        };
+
         function App() {
             const [tab, setTab] = React.useState('resumen');
             const [showModal, setShowModal] = React.useState(false);
@@ -106,7 +108,6 @@
             const [showAnulados, setShowAnulados] = React.useState(false);
 
             const [entities, setEntities] = React.useState(() => loadLS('finansync_entities', DEFAULT_ENTITIES));
-            // activeEntity: por defecto la primera empresa
             const [activeEntity, setActiveEntity] = React.useState(() => {
                 const ents = loadLS('finansync_entities', DEFAULT_ENTITIES);
                 return ents[0]?.name || 'Personal';
@@ -159,13 +160,11 @@
             const [newCatGasto, setNewCatGasto] = React.useState('');
             const [newCostCenter, setNewCostCenter] = React.useState('');
 
-            // Categorías y centros de la empresa activa
             const activeCategories = categoriesByEntity[activeEntity] || { ingreso: [], gasto: [] };
             const activeCostCenters = costCentersByEntity[activeEntity] || [];
 
             const pendingCount = transactions.filter(t => t.pendingSync).length;
 
-            // Asegurar que formCategory/formCostCenter sean válidos para formEntity
             React.useEffect(() => {
                 const cats = categoriesByEntity[formEntity] || { ingreso: [], gasto: [] };
                 const list = formType === 'ingreso' ? cats.ingreso : cats.gasto;
@@ -178,7 +177,6 @@
                 }
             }, [formEntity, formType, categoriesByEntity, costCentersByEntity]);
 
-            // ===== Sincronización =====
             const handleSyncData = async (isAuto = false) => {
                 if (syncing) return;
                 const enabledEntities = entities.filter(e => e.syncEnabled && e.driveFolderUrl);
@@ -238,7 +236,6 @@
                 setFormHasSustento(false);
                 setFormFileName('');
                 setFormEntity(activeEntity);
-                // Inicializar categoría y centro de la empresa activa
                 const cats = categoriesByEntity[activeEntity] || { ingreso: [], gasto: [] };
                 const list = type === 'ingreso' ? cats.ingreso : cats.gasto;
                 setFormCategory(list[0] || '');
@@ -304,17 +301,13 @@
                 } : tx));
             };
 
-            // ===== Listas maestras por empresa (operan sobre activeEntity) =====
             const addCategory = (type) => {
                 const val = type === 'ingreso' ? newCatIngreso : newCatGasto;
                 if (!val.trim()) return;
                 const current = categoriesByEntity[activeEntity] || { ingreso: [], gasto: [] };
                 setCategoriesByEntity({
                     ...categoriesByEntity,
-                    [activeEntity]: {
-                        ...current,
-                        [type]: [...current[type], val.trim()]
-                    }
+                    [activeEntity]: { ...current, [type]: [...current[type], val.trim()] }
                 });
                 if (type === 'ingreso') setNewCatIngreso(''); else setNewCatGasto('');
             };
@@ -324,10 +317,7 @@
                 if (current[type].length <= 1) return;
                 setCategoriesByEntity({
                     ...categoriesByEntity,
-                    [activeEntity]: {
-                        ...current,
-                        [type]: current[type].filter(c => c !== cat)
-                    }
+                    [activeEntity]: { ...current, [type]: current[type].filter(c => c !== cat) }
                 });
             };
 
@@ -378,14 +368,12 @@
                 const newEntities = entities.filter(e => e.id !== id);
                 setEntities(newEntities);
                 setTransactions(transactions.filter(t => t.entity !== ent.name));
-                // Eliminar categorías y centros de esa empresa
                 const newCats = { ...categoriesByEntity };
                 delete newCats[ent.name];
                 setCategoriesByEntity(newCats);
                 const newCCs = { ...costCentersByEntity };
                 delete newCCs[ent.name];
                 setCostCentersByEntity(newCCs);
-                // Si la empresa activa era la eliminada, cambiar a la primera
                 if (activeEntity === ent.name) {
                     setActiveEntity(newEntities[0]?.name || '');
                 }
@@ -420,7 +408,6 @@
                     setEntities(entities.map(en => en.id === editingEntityId ? { ...en, name: trimmedName, code: trimmedCode, ruc: trimmedRuc, reason: trimmedReason, driveFolderUrl: entityForm.driveFolderUrl.trim(), syncEnabled: entityForm.syncEnabled } : en));
                     if (oldName && oldName !== trimmedName) {
                         setTransactions(transactions.map(t => t.entity === oldName ? { ...t, entity: trimmedName, pendingSync: true } : t));
-                        // Migrar listas maestras al nuevo nombre
                         setCategoriesByEntity(prev => {
                             const next = { ...prev };
                             if (next[oldName]) { next[trimmedName] = next[oldName]; delete next[oldName]; }
@@ -436,28 +423,20 @@
                 } else {
                     const newId = Math.max(0, ...entities.map(en => en.id)) + 1;
                     setEntities([...entities, { id: newId, name: trimmedName, code: trimmedCode, ruc: trimmedRuc, reason: trimmedReason, driveFolderUrl: entityForm.driveFolderUrl.trim(), syncEnabled: entityForm.syncEnabled }]);
-                    // Inicializar listas maestras con defaults para la nueva empresa
                     setCategoriesByEntity(prev => ({
                         ...prev,
                         [trimmedName]: { ingreso: ['Ventas / Servicios', 'Otros Ingresos'], gasto: ['Proveedores & Insumos', 'Otros Gastos'] }
                     }));
-                    setCostCentersByEntity(prev => ({
-                        ...prev,
-                        [trimmedName]: ['General']
-                    }));
+                    setCostCentersByEntity(prev => ({ ...prev, [trimmedName]: ['General'] }));
                 }
                 setShowEntityModal(false);
             };
 
-            // ===== Export/Import =====
             const handleExportJSON = () => {
                 const data = {
                     exportedAt: new Date().toISOString(),
                     appVersion: 'FinanSync Pro',
-                    entities,
-                    transactions,
-                    categoriesByEntity,
-                    costCentersByEntity
+                    entities, transactions, categoriesByEntity, costCentersByEntity
                 };
                 const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
                 const url = URL.createObjectURL(blob);
@@ -497,7 +476,6 @@
                 reader.readAsText(file);
             };
 
-            // ===== Filtrado (solo la empresa activa) =====
             const filteredTx = transactions.filter(t => {
                 const matchEntity = t.entity === activeEntity;
                 const matchType = filterType === 'Todos' || (filterType === 'Ingresos' && t.type === 'ingreso') || (filterType === 'Gastos' && t.type === 'gasto');
@@ -536,7 +514,36 @@
             const comprasHeight = (monthlyGastos / chartMaxValue) * chartMaxHeight;
             const margenOperativo = monthlyIngresos > 0 ? ((monthlyIngresos - monthlyGastos) / monthlyIngresos) * 100 : 0;
 
+            // ===== Datos para los 3 nuevos gráficos =====
+            const gastosDelMes = currentMonthTx.filter(t => t.type === 'gasto');
+            const ingresosDelMes = currentMonthTx.filter(t => t.type === 'ingreso');
+            const gastosPorCategoria = groupAndSum(gastosDelMes, 'category');
+            const ingresosPorCategoria = groupAndSum(ingresosDelMes, 'category');
+            const movsPorCentroCosto = groupAndSum(currentMonthTx, 'costCenter');
+
             const fmt = (n) => n.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+            // Helper para renderizar gráfico de barras horizontales
+            const BarChartH = ({ data, colorClass, emptyMsg }) => {
+                if (!data || data.length === 0) {
+                    return <p className="text-xs text-slate-500 py-6 text-center">{emptyMsg}</p>;
+                }
+                const max = Math.max(...data.map(d => d[1]), 1);
+                return (
+                    <div className="space-y-2">
+                        {data.map(([label, value]) => (
+                            <div key={label} className="flex items-center gap-2">
+                                <span className="text-[11px] text-slate-400 w-24 md:w-36 truncate text-right" title={label}>{label}</span>
+                                <div className="flex-1 bg-slate-950 rounded h-6 overflow-hidden relative">
+                                    <div className={`h-full ${colorClass} rounded transition-all duration-500 flex items-center justify-end pr-2`} style={{ width: `${Math.max((value / max) * 100, 8)}%` }}>
+                                        <span className="text-[10px] text-white font-bold whitespace-nowrap">S/. {fmt(value)}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                );
+            };
 
             return (
                 <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
@@ -650,6 +657,8 @@
                                         <p className="text-[10px] text-slate-500 mt-1">{currentMonthTx.length} movimiento(s)</p>
                                     </div>
                                 </div>
+
+                                {/* Ventas vs Compras */}
                                 <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 space-y-4">
                                     <div className="flex justify-between items-center flex-wrap gap-2">
                                         <div>
@@ -662,7 +671,6 @@
                                         <div className="flex flex-col items-center justify-center py-12 text-slate-500">
                                             <span className="text-4xl mb-2">📊</span>
                                             <p className="text-sm text-center">Sin movimientos registrados en {currentMonthName} {currentYear}.</p>
-                                            <p className="text-xs mt-1 text-center">Registra un ingreso o gasto con fecha de este mes para ver el gráfico.</p>
                                         </div>
                                     ) : (
                                         <>
@@ -686,6 +694,42 @@
                                             </div>
                                         </>
                                     )}
+                                </div>
+
+                                {/* NUEVO: Gastos por categoría */}
+                                <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 space-y-3">
+                                    <div className="flex justify-between items-center flex-wrap gap-2">
+                                        <div>
+                                            <h3 className="font-bold text-sm">Gastos por Categoría — {currentMonthName} {currentYear}</h3>
+                                            <p className="text-xs text-slate-400">Distribución de egresos del mes</p>
+                                        </div>
+                                        <span className="bg-slate-950 text-rose-400 text-[11px] px-2.5 py-1 rounded-lg border border-rose-900/40">{gastosPorCategoria.length} categoría(s)</span>
+                                    </div>
+                                    <BarChartH data={gastosPorCategoria} colorClass="bg-rose-500" emptyMsg={`Sin gastos registrados en ${currentMonthName} ${currentYear}.`} />
+                                </div>
+
+                                {/* NUEVO: Ingresos por categoría */}
+                                <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 space-y-3">
+                                    <div className="flex justify-between items-center flex-wrap gap-2">
+                                        <div>
+                                            <h3 className="font-bold text-sm">Ingresos por Categoría — {currentMonthName} {currentYear}</h3>
+                                            <p className="text-xs text-slate-400">Distribución de ingresos del mes</p>
+                                        </div>
+                                        <span className="bg-slate-950 text-emerald-400 text-[11px] px-2.5 py-1 rounded-lg border border-emerald-900/40">{ingresosPorCategoria.length} categoría(s)</span>
+                                    </div>
+                                    <BarChartH data={ingresosPorCategoria} colorClass="bg-emerald-500" emptyMsg={`Sin ingresos registrados en ${currentMonthName} ${currentYear}.`} />
+                                </div>
+
+                                {/* NUEVO: Centros de costo */}
+                                <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 space-y-3">
+                                    <div className="flex justify-between items-center flex-wrap gap-2">
+                                        <div>
+                                            <h3 className="font-bold text-sm">Movimientos por Centro de Costo — {currentMonthName} {currentYear}</h3>
+                                            <p className="text-xs text-slate-400">Ingresos + gastos agrupados por centro</p>
+                                        </div>
+                                        <span className="bg-slate-950 text-blue-400 text-[11px] px-2.5 py-1 rounded-lg border border-blue-900/40">{movsPorCentroCosto.length} centro(s)</span>
+                                    </div>
+                                    <BarChartH data={movsPorCentroCosto} colorClass="bg-blue-500" emptyMsg={`Sin movimientos por centro de costo en ${currentMonthName} ${currentYear}.`} />
                                 </div>
                             </div>
                         )}
@@ -869,7 +913,6 @@
                                     <p className="text-[10px] text-slate-500 mt-3">El backup incluye: {transactions.length} transacciones, {entities.length} empresas.</p>
                                 </div>
 
-                                {/* Listas maestras POR EMPRESA */}
                                 <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800">
                                     <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
                                         <h2 className="text-xl font-bold">Listas Maestras — {activeEntity}</h2>
