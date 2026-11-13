@@ -102,7 +102,6 @@
                 const ents = loadLS('finansync_entities', DEFAULT_ENTITIES);
                 return migrateCostCenters(loadLS('finansync_costcenters_by_entity', null), ents);
             });
-            // ✅ NUEVO: metadata de config por empresa (updatedAt)
             const [configMetaByEntity, setConfigMetaByEntity] = React.useState(() => loadLS('finansync_config_meta_by_entity', {}));
 
             const [appsScriptUrl, setAppsScriptUrl] = React.useState(() => loadLS('finansync_script_url', ''));
@@ -156,12 +155,8 @@
                 if (ccs.length > 0 && !ccs.includes(formCostCenter)) setFormCostCenter(ccs[0]);
             }, [formEntity, formType, categoriesByEntity, costCentersByEntity]);
 
-            // ✅ NUEVO: marcar la config de una empresa como modificada
             const touchConfig = (entityName) => {
-                setConfigMetaByEntity(prev => ({
-                    ...prev,
-                    [entityName]: { updatedAt: new Date().toISOString() }
-                }));
+                setConfigMetaByEntity(prev => ({ ...prev, [entityName]: { updatedAt: new Date().toISOString() } }));
             };
 
             const handleSyncData = async (isAuto = false) => {
@@ -182,7 +177,6 @@
                     setSyncResults(prev => [...prev, { entity: ent.name, status: 'loading' }]);
                     try {
                         const localTx = transactions.filter(t => t.entity === ent.name);
-                        // ✅ NUEVO: enviar config por empresa
                         const configPayload = {
                             categories: categoriesByEntity[ent.name] || { ingreso: [], gasto: [] },
                             costCenters: costCentersByEntity[ent.name] || [],
@@ -205,7 +199,6 @@
                             const cleanTx = data.transactions.map(t => ({ ...t, pendingSync: false }));
                             setTransactions(prev => [...prev.filter(t => t.entity !== ent.name), ...cleanTx]);
 
-                            // ✅ NUEVO: aplicar config fusionada devuelta por el script
                             if (data.config && data.config.categories && data.config.costCenters) {
                                 setCategoriesByEntity(prev => ({
                                     ...prev,
@@ -312,7 +305,6 @@
                 } : tx));
             };
 
-            // ✅ Listas maestras por empresa: al editar se marca la config como modificada
             const addCategory = (type) => {
                 const val = type === 'ingreso' ? newCatIngreso : newCatGasto;
                 if (!val.trim()) return;
@@ -370,7 +362,6 @@
             const openEntityModal = (entityToEdit = null) => {
                 if (entityToEdit) {
                     setEditingEntityId(entityToEdit.id);
-                    setFormEntity(entityToEdit.name);
                     setEntityForm({ name: entityToEdit.name, code: entityToEdit.code, ruc: entityToEdit.ruc, reason: entityToEdit.reason, driveFolderUrl: entityToEdit.driveFolderUrl, syncEnabled: entityToEdit.syncEnabled });
                 } else {
                     setEditingEntityId(null);
@@ -485,6 +476,7 @@
 
             const fmt = (n) => n.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+            // ✅ BarChartH corregido: monto FUERA de la barra, a la derecha, blanco, alineado a la derecha
             const BarChartH = ({ data, colorClass, emptyMsg }) => {
                 if (!data || data.length === 0) return <p className="text-xs text-slate-500 py-6 text-center">{emptyMsg}</p>;
                 const max = Math.max(...data.map(d => d[1]), 1);
@@ -494,10 +486,9 @@
                             <div key={label} className="flex items-center gap-2">
                                 <span className="text-[11px] text-slate-400 w-24 md:w-36 truncate text-right" title={label}>{label}</span>
                                 <div className="flex-1 bg-slate-950 rounded h-6 overflow-hidden relative">
-                                    <div className={`h-full ${colorClass} rounded transition-all duration-500 flex items-center justify-end pr-2`} style={{ width: `${Math.max((value / max) * 100, 8)}%` }}>
-                                        <span className="text-[10px] text-white font-bold whitespace-nowrap">S/. {fmt(value)}</span>
-                                    </div>
+                                    <div className={`h-full ${colorClass} rounded transition-all duration-500`} style={{ width: `${Math.max((value / max) * 100, 2)}%` }}></div>
                                 </div>
+                                <span className="text-[11px] text-white font-bold whitespace-nowrap text-right w-24 shrink-0">S/. {fmt(value)}</span>
                             </div>
                         ))}
                     </div>
