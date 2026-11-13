@@ -22,21 +22,10 @@
             { id: 3, name: 'Transportes Logística S.A.C.', code: 'TL', ruc: '20601234562', reason: 'Transportes Logística S.A.C.', driveFolderUrl: '', syncEnabled: true }
         ];
 
-        const DEFAULT_TRANSACTIONS = [];
-
         const DEFAULT_CATEGORIES_BY_ENTITY = {
-            'Personal': {
-                ingreso: ['Salario', 'Honorarios', 'Inversiones', 'Alquiler', 'Otros Ingresos'],
-                gasto: ['Alimentación', 'Transporte', 'Vivienda', 'Servicios', 'Salud', 'Educación', 'Ocio', 'Otros Gastos']
-            },
-            'Soluciones Velcal': {
-                ingreso: ['Ventas / Servicios', 'Honorarios Profesional', 'Inversiones', 'Renta de Alquileres', 'Otros Ingresos'],
-                gasto: ['Planilla / Sueldos', 'Proveedores & Insumos', 'Impuestos (SUNAT)', 'Servicios Básicos', 'Alquileres', 'Marketing & Publicidad', 'Mantenimiento', 'Otros Gastos']
-            },
-            'Transportes Logística S.A.C.': {
-                ingreso: ['Ventas / Servicios', 'Honorarios Profesional', 'Inversiones', 'Renta de Alquileres', 'Otros Ingresos'],
-                gasto: ['Planilla / Sueldos', 'Proveedores & Insumos', 'Impuestos (SUNAT)', 'Servicios Básicos', 'Alquileres', 'Marketing & Publicidad', 'Mantenimiento', 'Otros Gastos']
-            }
+            'Personal': { ingreso: ['Salario', 'Honorarios', 'Inversiones', 'Alquiler', 'Otros Ingresos'], gasto: ['Alimentación', 'Transporte', 'Vivienda', 'Servicios', 'Salud', 'Educación', 'Ocio', 'Otros Gastos'] },
+            'Soluciones Velcal': { ingreso: ['Ventas / Servicios', 'Honorarios Profesional', 'Inversiones', 'Renta de Alquileres', 'Otros Ingresos'], gasto: ['Planilla / Sueldos', 'Proveedores & Insumos', 'Impuestos (SUNAT)', 'Servicios Básicos', 'Alquileres', 'Marketing & Publicidad', 'Mantenimiento', 'Otros Gastos'] },
+            'Transportes Logística S.A.C.': { ingreso: ['Ventas / Servicios', 'Honorarios Profesional', 'Inversiones', 'Renta de Alquileres', 'Otros Ingresos'], gasto: ['Planilla / Sueldos', 'Proveedores & Insumos', 'Impuestos (SUNAT)', 'Servicios Básicos', 'Alquileres', 'Marketing & Publicidad', 'Mantenimiento', 'Otros Gastos'] }
         };
 
         const DEFAULT_COST_CENTERS_BY_ENTITY = {
@@ -49,14 +38,11 @@
             if (!stored) return DEFAULT_CATEGORIES_BY_ENTITY;
             if (Array.isArray(stored.ingreso)) {
                 const migrated = {};
-                entities.forEach(e => {
-                    migrated[e.name] = { ingreso: [...stored.ingreso], gasto: [...stored.gasto] };
-                });
+                entities.forEach(e => { migrated[e.name] = { ingreso: [...stored.ingreso], gasto: [...stored.gasto] }; });
                 return migrated;
             }
             return stored;
         };
-
         const migrateCostCenters = (stored, entities) => {
             if (!stored) return DEFAULT_COST_CENTERS_BY_ENTITY;
             if (Array.isArray(stored)) {
@@ -68,10 +54,7 @@
         };
 
         const loadLS = (key, fallback) => {
-            try {
-                const raw = localStorage.getItem(key);
-                return raw ? JSON.parse(raw) : fallback;
-            } catch { return fallback; }
+            try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : fallback; } catch { return fallback; }
         };
         const saveLS = (key, value) => {
             try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
@@ -82,13 +65,11 @@
             const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
             const prefixToday = `${prefix}-${today}`;
             const existingToday = existingTransactions.filter(t => t.id && t.id.startsWith(prefixToday));
-            const nextSeq = existingToday.length + 1;
-            return `${prefixToday}-${String(nextSeq).padStart(4, '0')}`;
+            return `${prefixToday}-${String(existingToday.length + 1).padStart(4, '0')}`;
         };
 
         const validateCompanyCode = (code) => /^[A-Z]{2}$/.test(code);
 
-        // Agrupa un array por una clave y suma montos. Devuelve [[label, total], ...] ordenado desc
         const groupAndSum = (arr, key) => {
             const map = {};
             arr.forEach(t => {
@@ -102,7 +83,6 @@
             const [tab, setTab] = React.useState('resumen');
             const [showModal, setShowModal] = React.useState(false);
             const [selectedYear, setSelectedYear] = React.useState('2026');
-
             const [filterType, setFilterType] = React.useState('Todos');
             const [filterCategory, setFilterCategory] = React.useState('Todas');
             const [showAnulados, setShowAnulados] = React.useState(false);
@@ -113,7 +93,7 @@
                 return ents[0]?.name || 'Personal';
             });
 
-            const [transactions, setTransactions] = React.useState(() => loadLS('finansync_transactions', DEFAULT_TRANSACTIONS));
+            const [transactions, setTransactions] = React.useState(() => loadLS('finansync_transactions', []));
             const [categoriesByEntity, setCategoriesByEntity] = React.useState(() => {
                 const ents = loadLS('finansync_entities', DEFAULT_ENTITIES);
                 return migrateCategories(loadLS('finansync_categories_by_entity', null), ents);
@@ -122,6 +102,9 @@
                 const ents = loadLS('finansync_entities', DEFAULT_ENTITIES);
                 return migrateCostCenters(loadLS('finansync_costcenters_by_entity', null), ents);
             });
+            // ✅ NUEVO: metadata de config por empresa (updatedAt)
+            const [configMetaByEntity, setConfigMetaByEntity] = React.useState(() => loadLS('finansync_config_meta_by_entity', {}));
+
             const [appsScriptUrl, setAppsScriptUrl] = React.useState(() => loadLS('finansync_script_url', ''));
             const [lastSyncTime, setLastSyncTime] = React.useState(() => loadLS('finansync_last_sync', null));
 
@@ -129,6 +112,7 @@
             React.useEffect(() => saveLS('finansync_transactions', transactions), [transactions]);
             React.useEffect(() => saveLS('finansync_categories_by_entity', categoriesByEntity), [categoriesByEntity]);
             React.useEffect(() => saveLS('finansync_costcenters_by_entity', costCentersByEntity), [costCentersByEntity]);
+            React.useEffect(() => saveLS('finansync_config_meta_by_entity', configMetaByEntity), [configMetaByEntity]);
             React.useEffect(() => saveLS('finansync_script_url', appsScriptUrl), [appsScriptUrl]);
             React.useEffect(() => saveLS('finansync_last_sync', lastSyncTime), [lastSyncTime]);
 
@@ -162,20 +146,23 @@
 
             const activeCategories = categoriesByEntity[activeEntity] || { ingreso: [], gasto: [] };
             const activeCostCenters = costCentersByEntity[activeEntity] || [];
-
             const pendingCount = transactions.filter(t => t.pendingSync).length;
 
             React.useEffect(() => {
                 const cats = categoriesByEntity[formEntity] || { ingreso: [], gasto: [] };
                 const list = formType === 'ingreso' ? cats.ingreso : cats.gasto;
-                if (list.length > 0 && !list.includes(formCategory)) {
-                    setFormCategory(list[0]);
-                }
+                if (list.length > 0 && !list.includes(formCategory)) setFormCategory(list[0]);
                 const ccs = costCentersByEntity[formEntity] || [];
-                if (ccs.length > 0 && !ccs.includes(formCostCenter)) {
-                    setFormCostCenter(ccs[0]);
-                }
+                if (ccs.length > 0 && !ccs.includes(formCostCenter)) setFormCostCenter(ccs[0]);
             }, [formEntity, formType, categoriesByEntity, costCentersByEntity]);
+
+            // ✅ NUEVO: marcar la config de una empresa como modificada
+            const touchConfig = (entityName) => {
+                setConfigMetaByEntity(prev => ({
+                    ...prev,
+                    [entityName]: { updatedAt: new Date().toISOString() }
+                }));
+            };
 
             const handleSyncData = async (isAuto = false) => {
                 if (syncing) return;
@@ -195,6 +182,12 @@
                     setSyncResults(prev => [...prev, { entity: ent.name, status: 'loading' }]);
                     try {
                         const localTx = transactions.filter(t => t.entity === ent.name);
+                        // ✅ NUEVO: enviar config por empresa
+                        const configPayload = {
+                            categories: categoriesByEntity[ent.name] || { ingreso: [], gasto: [] },
+                            costCenters: costCentersByEntity[ent.name] || [],
+                            updatedAt: (configMetaByEntity[ent.name] && configMetaByEntity[ent.name].updatedAt) || '1970-01-01T00:00:00'
+                        };
                         const response = await fetch(appsScriptUrl, {
                             method: 'POST',
                             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -203,13 +196,34 @@
                                 folderUrl: ent.driveFolderUrl,
                                 companyCode: ent.code,
                                 companyName: ent.name,
-                                transactions: localTx
+                                transactions: localTx,
+                                config: configPayload
                             })
                         });
                         const data = await response.json();
                         if (data.success && Array.isArray(data.transactions)) {
                             const cleanTx = data.transactions.map(t => ({ ...t, pendingSync: false }));
                             setTransactions(prev => [...prev.filter(t => t.entity !== ent.name), ...cleanTx]);
+
+                            // ✅ NUEVO: aplicar config fusionada devuelta por el script
+                            if (data.config && data.config.categories && data.config.costCenters) {
+                                setCategoriesByEntity(prev => ({
+                                    ...prev,
+                                    [ent.name]: {
+                                        ingreso: data.config.categories.ingreso || [],
+                                        gasto: data.config.categories.gasto || []
+                                    }
+                                }));
+                                setCostCentersByEntity(prev => ({
+                                    ...prev,
+                                    [ent.name]: data.config.costCenters || []
+                                }));
+                                setConfigMetaByEntity(prev => ({
+                                    ...prev,
+                                    [ent.name]: { updatedAt: data.config.updatedAt || new Date().toISOString() }
+                                }));
+                            }
+
                             setSyncResults(prev => prev.map(r => r.entity === ent.name ? { entity: ent.name, status: 'ok', count: data.transactions.length } : r));
                         } else {
                             setSyncResults(prev => prev.map(r => r.entity === ent.name ? { entity: ent.name, status: 'error', message: data.error || 'Error desconocido' } : r));
@@ -271,22 +285,20 @@
                         ultimaModificacion: now, modificado: 'Sí', origen: 'App', pendingSync: true
                     } : t));
                 } else {
-                    const newTx = {
+                    setTransactions([{
                         id: generateReadableId(formType, transactions), type: formType, entity: formEntity,
                         amount: parseFloat(formAmount), currency: formCurrency, category: formCategory,
                         costCenter: formCostCenter, date: formDate, note: formNote,
                         hasSustento: formHasSustento, sustentoFile: formFileName || 'Sustento_Telegram.pdf',
                         fechaCreacion: now, ultimaModificacion: null, modificado: 'No', origen: 'App', estado: 'Activo', pendingSync: true
-                    };
-                    setTransactions([newTx, ...transactions]);
+                    }, ...transactions]);
                 }
                 setShowModal(false);
             };
 
             const anularTransaction = (t) => {
                 if (t.estado === 'Anulado') return;
-                const ok = window.confirm(`¿Anular esta transacción?\n\n"${t.note}" — ${t.currency} ${t.amount.toFixed(2)}\n\nNo se borrará: quedará marcada como "Anulado" y no contará en los totales.`);
-                if (!ok) return;
+                if (!window.confirm(`¿Anular esta transacción?\n\n"${t.note}" — ${t.currency} ${t.amount.toFixed(2)}\n\nNo se borrará: quedará marcada como "Anulado".`)) return;
                 setTransactions(transactions.map(tx => tx.id === t.id ? {
                     ...tx, estado: 'Anulado', ultimaModificacion: new Date().toISOString(), modificado: 'Sí', origen: 'App', pendingSync: true
                 } : tx));
@@ -294,63 +306,44 @@
 
             const reactivarTransaction = (t) => {
                 if (t.estado !== 'Anulado') return;
-                const ok = window.confirm(`¿Reactivar esta transacción?\n\n"${t.note}" — ${t.currency} ${t.amount.toFixed(2)}`);
-                if (!ok) return;
+                if (!window.confirm(`¿Reactivar esta transacción?\n\n"${t.note}" — ${t.currency} ${t.amount.toFixed(2)}`)) return;
                 setTransactions(transactions.map(tx => tx.id === t.id ? {
                     ...tx, estado: 'Activo', ultimaModificacion: new Date().toISOString(), modificado: 'Sí', origen: 'App', pendingSync: true
                 } : tx));
             };
 
+            // ✅ Listas maestras por empresa: al editar se marca la config como modificada
             const addCategory = (type) => {
                 const val = type === 'ingreso' ? newCatIngreso : newCatGasto;
                 if (!val.trim()) return;
                 const current = categoriesByEntity[activeEntity] || { ingreso: [], gasto: [] };
-                setCategoriesByEntity({
-                    ...categoriesByEntity,
-                    [activeEntity]: { ...current, [type]: [...current[type], val.trim()] }
-                });
+                setCategoriesByEntity({ ...categoriesByEntity, [activeEntity]: { ...current, [type]: [...current[type], val.trim()] } });
+                touchConfig(activeEntity);
                 if (type === 'ingreso') setNewCatIngreso(''); else setNewCatGasto('');
             };
-
             const removeCategory = (type, cat) => {
                 const current = categoriesByEntity[activeEntity] || { ingreso: [], gasto: [] };
                 if (current[type].length <= 1) return;
-                setCategoriesByEntity({
-                    ...categoriesByEntity,
-                    [activeEntity]: { ...current, [type]: current[type].filter(c => c !== cat) }
-                });
+                setCategoriesByEntity({ ...categoriesByEntity, [activeEntity]: { ...current, [type]: current[type].filter(c => c !== cat) } });
+                touchConfig(activeEntity);
             };
-
             const addCostCenter = () => {
                 if (!newCostCenter.trim()) return;
                 const current = costCentersByEntity[activeEntity] || [];
-                setCostCentersByEntity({
-                    ...costCentersByEntity,
-                    [activeEntity]: [...current, newCostCenter.trim()]
-                });
+                setCostCentersByEntity({ ...costCentersByEntity, [activeEntity]: [...current, newCostCenter.trim()] });
+                touchConfig(activeEntity);
                 setNewCostCenter('');
             };
-
             const removeCostCenter = (cc) => {
                 const current = costCentersByEntity[activeEntity] || [];
                 if (current.length <= 1) return;
-                setCostCentersByEntity({
-                    ...costCentersByEntity,
-                    [activeEntity]: current.filter(c => c !== cc)
-                });
+                setCostCentersByEntity({ ...costCentersByEntity, [activeEntity]: current.filter(c => c !== cc) });
+                touchConfig(activeEntity);
             };
 
-            const updateEntityFolder = (id, url) => {
-                setEntities(entities.map(e => e.id === id ? { ...e, driveFolderUrl: url } : e));
-            };
-            const toggleEntitySync = (id) => {
-                setEntities(entities.map(e => e.id === id ? { ...e, syncEnabled: !e.syncEnabled } : e));
-            };
-            const extractFolderId = (url) => {
-                if (!url) return '';
-                const match = url.match(/folders\/([a-zA-Z0-9_-]+)/);
-                return match ? match[1] : '';
-            };
+            const updateEntityFolder = (id, url) => setEntities(entities.map(e => e.id === id ? { ...e, driveFolderUrl: url } : e));
+            const toggleEntitySync = (id) => setEntities(entities.map(e => e.id === id ? { ...e, syncEnabled: !e.syncEnabled } : e));
+            const extractFolderId = (url) => { if (!url) return ''; const m = url.match(/folders\/([a-zA-Z0-9_-]+)/); return m ? m[1] : ''; };
             const updateEntityCode = (id, newCode) => {
                 const cleaned = newCode.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 2);
                 if (entities.find(e => e.id !== id && e.code === cleaned)) return;
@@ -361,27 +354,23 @@
                 const ent = entities.find(e => e.id === id);
                 if (!ent) return;
                 const txCount = transactions.filter(t => t.entity === ent.name).length;
-                const confirmMsg = txCount > 0
-                    ? `⚠️ ¿Eliminar "${ent.name}" (código ${ent.code})?\n\nTambién se eliminarán ${txCount} transacción(es) y sus listas maestras.\n\nLos archivos en Drive NO se borrarán.\n\n¿Continuar?`
-                    : `¿Eliminar la empresa "${ent.name}" (código ${ent.code})?\n\nLos archivos en Drive NO se borrarán.`;
-                if (!window.confirm(confirmMsg)) return;
+                const msg = txCount > 0
+                    ? `⚠️ ¿Eliminar "${ent.name}"?\n\nTambién se eliminarán ${txCount} transacción(es) y sus listas maestras.\n\nLos archivos en Drive NO se borrarán.`
+                    : `¿Eliminar "${ent.name}"?\n\nLos archivos en Drive NO se borrarán.`;
+                if (!window.confirm(msg)) return;
                 const newEntities = entities.filter(e => e.id !== id);
                 setEntities(newEntities);
                 setTransactions(transactions.filter(t => t.entity !== ent.name));
-                const newCats = { ...categoriesByEntity };
-                delete newCats[ent.name];
-                setCategoriesByEntity(newCats);
-                const newCCs = { ...costCentersByEntity };
-                delete newCCs[ent.name];
-                setCostCentersByEntity(newCCs);
-                if (activeEntity === ent.name) {
-                    setActiveEntity(newEntities[0]?.name || '');
-                }
+                const nc = { ...categoriesByEntity }; delete nc[ent.name]; setCategoriesByEntity(nc);
+                const ncc = { ...costCentersByEntity }; delete ncc[ent.name]; setCostCentersByEntity(ncc);
+                const nm = { ...configMetaByEntity }; delete nm[ent.name]; setConfigMetaByEntity(nm);
+                if (activeEntity === ent.name) setActiveEntity(newEntities[0]?.name || '');
             };
 
             const openEntityModal = (entityToEdit = null) => {
                 if (entityToEdit) {
                     setEditingEntityId(entityToEdit.id);
+                    setFormEntity(entityToEdit.name);
                     setEntityForm({ name: entityToEdit.name, code: entityToEdit.code, ruc: entityToEdit.ruc, reason: entityToEdit.reason, driveFolderUrl: entityToEdit.driveFolderUrl, syncEnabled: entityToEdit.syncEnabled });
                 } else {
                     setEditingEntityId(null);
@@ -399,7 +388,7 @@
                 const trimmedReason = entityForm.reason.trim() || trimmedName;
                 if (!trimmedName) return setEntityFormError('El nombre es obligatorio.');
                 if (!validateCompanyCode(trimmedCode)) return setEntityFormError('El código debe ser exactamente 2 letras mayúsculas (A–Z).');
-                if (entities.some(en => en.code === trimmedCode && en.id !== editingEntityId)) return setEntityFormError(`El código "${trimmedCode}" ya está en uso por otra empresa.`);
+                if (entities.some(en => en.code === trimmedCode && en.id !== editingEntityId)) return setEntityFormError(`El código "${trimmedCode}" ya está en uso.`);
                 if (entities.some(en => en.name.toLowerCase() === trimmedName.toLowerCase() && en.id !== editingEntityId)) return setEntityFormError('Ya existe una empresa con ese nombre.');
 
                 if (editingEntityId) {
@@ -408,45 +397,29 @@
                     setEntities(entities.map(en => en.id === editingEntityId ? { ...en, name: trimmedName, code: trimmedCode, ruc: trimmedRuc, reason: trimmedReason, driveFolderUrl: entityForm.driveFolderUrl.trim(), syncEnabled: entityForm.syncEnabled } : en));
                     if (oldName && oldName !== trimmedName) {
                         setTransactions(transactions.map(t => t.entity === oldName ? { ...t, entity: trimmedName, pendingSync: true } : t));
-                        setCategoriesByEntity(prev => {
-                            const next = { ...prev };
-                            if (next[oldName]) { next[trimmedName] = next[oldName]; delete next[oldName]; }
-                            return next;
-                        });
-                        setCostCentersByEntity(prev => {
-                            const next = { ...prev };
-                            if (next[oldName]) { next[trimmedName] = next[oldName]; delete next[oldName]; }
-                            return next;
-                        });
+                        setCategoriesByEntity(prev => { const n = { ...prev }; if (n[oldName]) { n[trimmedName] = n[oldName]; delete n[oldName]; } return n; });
+                        setCostCentersByEntity(prev => { const n = { ...prev }; if (n[oldName]) { n[trimmedName] = n[oldName]; delete n[oldName]; } return n; });
+                        setConfigMetaByEntity(prev => { const n = { ...prev }; if (n[oldName]) { n[trimmedName] = n[oldName]; delete n[oldName]; } return n; });
                         if (activeEntity === oldName) setActiveEntity(trimmedName);
                     }
                 } else {
                     const newId = Math.max(0, ...entities.map(en => en.id)) + 1;
                     setEntities([...entities, { id: newId, name: trimmedName, code: trimmedCode, ruc: trimmedRuc, reason: trimmedReason, driveFolderUrl: entityForm.driveFolderUrl.trim(), syncEnabled: entityForm.syncEnabled }]);
-                    setCategoriesByEntity(prev => ({
-                        ...prev,
-                        [trimmedName]: { ingreso: ['Ventas / Servicios', 'Otros Ingresos'], gasto: ['Proveedores & Insumos', 'Otros Gastos'] }
-                    }));
+                    setCategoriesByEntity(prev => ({ ...prev, [trimmedName]: { ingreso: ['Ventas / Servicios', 'Otros Ingresos'], gasto: ['Proveedores & Insumos', 'Otros Gastos'] } }));
                     setCostCentersByEntity(prev => ({ ...prev, [trimmedName]: ['General'] }));
+                    touchConfig(trimmedName);
                 }
                 setShowEntityModal(false);
             };
 
             const handleExportJSON = () => {
-                const data = {
-                    exportedAt: new Date().toISOString(),
-                    appVersion: 'FinanSync Pro',
-                    entities, transactions, categoriesByEntity, costCentersByEntity
-                };
+                const data = { exportedAt: new Date().toISOString(), appVersion: 'FinanSync Pro', entities, transactions, categoriesByEntity, costCentersByEntity, configMetaByEntity };
                 const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
                 a.download = `finansync_backup_${new Date().toISOString().split('T')[0]}.json`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
+                document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
             };
 
             const handleImportJSON = (e) => {
@@ -456,22 +429,15 @@
                 reader.onload = (evt) => {
                     try {
                         const data = JSON.parse(evt.target.result);
-                        if (!data.transactions || !Array.isArray(data.transactions)) {
-                            alert('❌ El archivo no tiene el formato esperado.');
-                            return;
-                        }
-                        const replace = window.confirm(
-                            `¿Importar el backup?\n\n• ${data.transactions.length} transacciones\n• ${(data.entities || []).length} empresas\n\nSe REEMPLAZARÁN los datos actuales. ¿Continuar?`
-                        );
-                        if (!replace) return;
+                        if (!data.transactions || !Array.isArray(data.transactions)) { alert('❌ Formato inválido.'); return; }
+                        if (!window.confirm(`¿Importar backup?\n\n• ${data.transactions.length} transacciones\n• ${(data.entities || []).length} empresas\n\nSe REEMPLAZARÁN los datos actuales.`)) return;
                         if (data.entities) setEntities(data.entities);
                         if (data.transactions) setTransactions(data.transactions.map(t => ({ ...t, pendingSync: false })));
                         if (data.categoriesByEntity) setCategoriesByEntity(data.categoriesByEntity);
                         if (data.costCentersByEntity) setCostCentersByEntity(data.costCentersByEntity);
-                        alert('✅ Backup importado correctamente.');
-                    } catch (err) {
-                        alert('❌ Error al leer el archivo: ' + err.message);
-                    }
+                        if (data.configMetaByEntity) setConfigMetaByEntity(data.configMetaByEntity);
+                        alert('✅ Backup importado.');
+                    } catch (err) { alert('❌ Error: ' + err.message); }
                 };
                 reader.readAsText(file);
             };
@@ -484,10 +450,7 @@
                 return matchEntity && matchType && matchCat && matchAnulado;
             });
 
-            const entityFilteredTx = transactions.filter(t =>
-                t.estado === 'Activo' && t.entity === activeEntity
-            );
-
+            const entityFilteredTx = transactions.filter(t => t.estado === 'Activo' && t.entity === activeEntity);
             const totalIngresos = entityFilteredTx.filter(t => t.type === 'ingreso').reduce((s, t) => s + t.amount, 0);
             const totalGastos = entityFilteredTx.filter(t => t.type === 'gasto').reduce((s, t) => s + t.amount, 0);
             const balance = totalIngresos - totalGastos;
@@ -514,7 +477,6 @@
             const comprasHeight = (monthlyGastos / chartMaxValue) * chartMaxHeight;
             const margenOperativo = monthlyIngresos > 0 ? ((monthlyIngresos - monthlyGastos) / monthlyIngresos) * 100 : 0;
 
-            // ===== Datos para los 3 nuevos gráficos =====
             const gastosDelMes = currentMonthTx.filter(t => t.type === 'gasto');
             const ingresosDelMes = currentMonthTx.filter(t => t.type === 'ingreso');
             const gastosPorCategoria = groupAndSum(gastosDelMes, 'category');
@@ -523,11 +485,8 @@
 
             const fmt = (n) => n.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-            // Helper para renderizar gráfico de barras horizontales
             const BarChartH = ({ data, colorClass, emptyMsg }) => {
-                if (!data || data.length === 0) {
-                    return <p className="text-xs text-slate-500 py-6 text-center">{emptyMsg}</p>;
-                }
+                if (!data || data.length === 0) return <p className="text-xs text-slate-500 py-6 text-center">{emptyMsg}</p>;
                 const max = Math.max(...data.map(d => d[1]), 1);
                 return (
                     <div className="space-y-2">
@@ -557,17 +516,11 @@
                         </div>
                         <div className="flex items-center gap-2 overflow-x-auto w-full md:w-auto pb-2 md:pb-0">
                             {entities.map(ent => (
-                                <button key={ent.id} onClick={() => setActiveEntity(ent.name)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition ${activeEntity === ent.name ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-300'}`}>
-                                    {ent.name}
-                                </button>
+                                <button key={ent.id} onClick={() => setActiveEntity(ent.name)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition ${activeEntity === ent.name ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-300'}`}>{ent.name}</button>
                             ))}
                         </div>
                         <div className="flex items-center gap-2 w-full md:w-auto">
-                            {pendingCount > 0 && (
-                                <span className="bg-amber-950 text-amber-400 border border-amber-800 px-2.5 py-1.5 rounded-lg text-[11px] font-bold whitespace-nowrap" title="Cambios locales sin subir a Drive">
-                                    ⚠️ {pendingCount} sin sincronizar
-                                </span>
-                            )}
+                            {pendingCount > 0 && <span className="bg-amber-950 text-amber-400 border border-amber-800 px-2.5 py-1.5 rounded-lg text-[11px] font-bold whitespace-nowrap">⚠️ {pendingCount} sin sincronizar</span>}
                             <button onClick={() => handleSyncData(false)} disabled={syncing}
                                 className={`${syncing ? 'bg-slate-700 cursor-wait' : 'bg-blue-600 hover:bg-blue-500'} text-white px-4 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 whitespace-nowrap`}>
                                 {syncing ? '🔄 Actualizando...' : '🔄 Actualizar Data'}
@@ -603,12 +556,8 @@
                                         </div>
                                     </div>
                                     <div className="grid grid-cols-2 gap-4">
-                                        <button onClick={() => openRegisterModal('ingreso')} className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3.5 px-4 rounded-xl flex items-center justify-center gap-2 transition shadow-lg text-sm">
-                                            <span className="text-lg">＋</span> Registrar Ingreso
-                                        </button>
-                                        <button onClick={() => openRegisterModal('gasto')} className="bg-rose-600 hover:bg-rose-500 text-white font-bold py-3.5 px-4 rounded-xl flex items-center justify-center gap-2 transition shadow-lg text-sm">
-                                            <span className="text-lg">－</span> Registrar Gasto
-                                        </button>
+                                        <button onClick={() => openRegisterModal('ingreso')} className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3.5 px-4 rounded-xl flex items-center justify-center gap-2 transition shadow-lg text-sm"><span className="text-lg">＋</span> Registrar Ingreso</button>
+                                        <button onClick={() => openRegisterModal('gasto')} className="bg-rose-600 hover:bg-rose-500 text-white font-bold py-3.5 px-4 rounded-xl flex items-center justify-center gap-2 transition shadow-lg text-sm"><span className="text-lg">－</span> Registrar Gasto</button>
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -623,9 +572,7 @@
                                         <p className="text-[10px] text-slate-500 mt-1">{currentMonthName} {currentYear}</p>
                                     </div>
                                 </div>
-                                {lastSyncTime && (
-                                    <p className="text-[11px] text-slate-500 text-center">Última sincronización: {new Date(lastSyncTime).toLocaleString('es-PE')}</p>
-                                )}
+                                {lastSyncTime && <p className="text-[11px] text-slate-500 text-center">Última sincronización: {new Date(lastSyncTime).toLocaleString('es-PE')}</p>}
                             </div>
                         )}
 
@@ -658,7 +605,6 @@
                                     </div>
                                 </div>
 
-                                {/* Ventas vs Compras */}
                                 <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 space-y-4">
                                     <div className="flex justify-between items-center flex-wrap gap-2">
                                         <div>
@@ -677,14 +623,12 @@
                                             <div className="h-64 flex items-end justify-around gap-6 border-b border-slate-800 pb-2 pt-4">
                                                 <div className="flex flex-col items-center gap-2 flex-1 max-w-[140px]">
                                                     <span className="text-xs font-bold text-emerald-400 whitespace-nowrap">S/. {fmt(monthlyIngresos)}</span>
-                                                    <div className="w-16 md:w-24 bg-gradient-to-t from-emerald-600 to-emerald-400 rounded-t-lg transition-all duration-500 shadow-lg shadow-emerald-900/30"
-                                                        style={{ height: `${Math.max(ventasHeight, monthlyIngresos > 0 ? 8 : 0)}px` }}></div>
+                                                    <div className="w-16 md:w-24 bg-gradient-to-t from-emerald-600 to-emerald-400 rounded-t-lg transition-all duration-500 shadow-lg shadow-emerald-900/30" style={{ height: `${Math.max(ventasHeight, monthlyIngresos > 0 ? 8 : 0)}px` }}></div>
                                                     <span className="text-xs text-slate-300 font-bold">Ventas</span>
                                                 </div>
                                                 <div className="flex flex-col items-center gap-2 flex-1 max-w-[140px]">
                                                     <span className="text-xs font-bold text-rose-400 whitespace-nowrap">S/. {fmt(monthlyGastos)}</span>
-                                                    <div className="w-16 md:w-24 bg-gradient-to-t from-rose-600 to-rose-400 rounded-t-lg transition-all duration-500 shadow-lg shadow-rose-900/30"
-                                                        style={{ height: `${Math.max(comprasHeight, monthlyGastos > 0 ? 8 : 0)}px` }}></div>
+                                                    <div className="w-16 md:w-24 bg-gradient-to-t from-rose-600 to-rose-400 rounded-t-lg transition-all duration-500 shadow-lg shadow-rose-900/30" style={{ height: `${Math.max(comprasHeight, monthlyGastos > 0 ? 8 : 0)}px` }}></div>
                                                     <span className="text-xs text-slate-300 font-bold">Compras</span>
                                                 </div>
                                             </div>
@@ -696,7 +640,6 @@
                                     )}
                                 </div>
 
-                                {/* NUEVO: Gastos por categoría */}
                                 <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 space-y-3">
                                     <div className="flex justify-between items-center flex-wrap gap-2">
                                         <div>
@@ -708,7 +651,6 @@
                                     <BarChartH data={gastosPorCategoria} colorClass="bg-rose-500" emptyMsg={`Sin gastos registrados en ${currentMonthName} ${currentYear}.`} />
                                 </div>
 
-                                {/* NUEVO: Ingresos por categoría */}
                                 <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 space-y-3">
                                     <div className="flex justify-between items-center flex-wrap gap-2">
                                         <div>
@@ -720,7 +662,6 @@
                                     <BarChartH data={ingresosPorCategoria} colorClass="bg-emerald-500" emptyMsg={`Sin ingresos registrados en ${currentMonthName} ${currentYear}.`} />
                                 </div>
 
-                                {/* NUEVO: Centros de costo */}
                                 <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 space-y-3">
                                     <div className="flex justify-between items-center flex-wrap gap-2">
                                         <div>
@@ -884,7 +825,7 @@
                                             </div>
                                         );
                                     })}
-                                    {entities.length === 0 && <p className="text-center text-slate-500 text-sm py-6">No hay empresas. Agrega una con el botón "+ Agregar Empresa".</p>}
+                                    {entities.length === 0 && <p className="text-center text-slate-500 text-sm py-6">No hay empresas.</p>}
                                 </div>
                             </div>
                         )}
@@ -902,9 +843,7 @@
                                     <h2 className="text-xl font-bold mb-2">Respaldo y Restauración</h2>
                                     <p className="text-xs text-slate-400 mb-4">Descarga un backup de todas tus transacciones y configuración en un archivo JSON.</p>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                        <button onClick={handleExportJSON} className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 px-4 rounded-xl text-xs transition flex items-center justify-center gap-2">
-                                            ⬇️ Exportar backup JSON
-                                        </button>
+                                        <button onClick={handleExportJSON} className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 px-4 rounded-xl text-xs transition flex items-center justify-center gap-2">⬇️ Exportar backup JSON</button>
                                         <label className="bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold py-2.5 px-4 rounded-xl text-xs transition flex items-center justify-center gap-2 cursor-pointer border border-slate-700">
                                             ⬆️ Importar backup JSON
                                             <input type="file" accept="application/json,.json" onChange={handleImportJSON} className="hidden" />
@@ -918,7 +857,7 @@
                                         <h2 className="text-xl font-bold">Listas Maestras — {activeEntity}</h2>
                                         <span className="bg-slate-950 text-slate-300 text-[11px] px-2.5 py-1 rounded-lg border border-slate-800">Editando: {activeEntity}</span>
                                     </div>
-                                    <p className="text-xs text-slate-400 mb-4">Estas listas son exclusivas de <strong className="text-emerald-400">{activeEntity}</strong>. Cambia de empresa en el header para editar las de otra.</p>
+                                    <p className="text-xs text-slate-400 mb-4">Estas listas se guardan automáticamente en <code className="text-emerald-400">registro_ventas_{entities.find(e => e.name === activeEntity)?.code || 'XX'}</code>. Cambia de empresa en el header para editar las de otra.</p>
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                         <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
                                             <h3 className="font-semibold text-xs text-emerald-400 mb-3">Categorías de Ingresos</h3>
